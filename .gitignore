@@ -1,0 +1,5 @@
+models
+experiments
+*.pyc
+.project
+.pydevproject
