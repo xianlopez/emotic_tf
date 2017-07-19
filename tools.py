@@ -11,6 +11,8 @@ import collections
 from params import emotic_mean, emotic_std, category_names
 import os
 import time
+import logging
+import sys
 
 # Limit GPU's memory usage by tensorflow:
 config = tf.ConfigProto()
@@ -28,9 +30,7 @@ def load_annotations(dataset = 'all'):
     elif(dataset == 'test'):
         subset_name = '/home/xian/EMOTIC/test_annotations.txt'
     elif(dataset != 'all'):
-        print('dataset not recognized.')
-        print('ABORTING...')
-        exit()
+        error('dataset not recognized.')
     
     with open('/home/xian/EMOTIC/annotations_txt.txt', "r") as f:
         annotations = list()
@@ -131,8 +131,7 @@ def get_categories(annotation):
 ###########################################################################################################
 ### Display error message, and stop execution.
 def error(msg):
-    print(msg)
-    print('ABORTING...')
+    logging.error('ERROR: ' + msg)
     exit()
 
 
@@ -238,10 +237,44 @@ def prepare_dircase(opts):
         dircase = dirdate + '/case_' + str(case_idx)
     os.makedirs(dircase)
     print('Saving results to ' + dircase)
-    # The final path to use:
-    modelname = dircase + '/model'
-    return modelname, dircase
+    return dircase
 
+
+###########################################################################################################
+### ****
+def configure_logging(dircase):
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s %(message)s',
+                        datefmt='%m-%d %H:%M',
+                        filename=dircase+'/out.log',
+                        filemode='w')
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    # set a format which is simpler for console use
+    formatter = logging.Formatter('%(message)s')
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger('').addHandler(console)
+    logging.info('Logging configured.')
+
+
+###########################################################################################################
+### Write options to a file in the case directory.
+def write_options(opts, dircase):
+    with open(dircase+'/options.txt', 'w') as f:
+        f.write('-----------------\n')
+        f.write('General options:\n')
+        f.write('-----------------\n')
+        for key, val in vars(opts).items():
+            if key != 'cnn_opts':
+                f.write('%s: %s\n' % (key, str(val)))
+        f.write('-----------------\n')
+        f.write('CNN options\n')
+        f.write('-----------------\n')
+        for key, val in vars(opts.cnn_opts[opts.modelname]).items():
+            f.write('%s: %s\n' % (key, str(val)))
 
 
 

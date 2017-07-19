@@ -12,8 +12,8 @@ opts = general_options_class()
 opts.normalize = 2
 opts.nsteps = 10
 
-opts.train = False
-opts.evaluate_model = True
+opts.train = 1
+opts.evaluate_model = 0
 
 # CNN EMOTIC options:
 opts.cnn_opts['cnn_emotic_1'].load_torch = True

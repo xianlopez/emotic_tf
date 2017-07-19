@@ -6,36 +6,46 @@
 ### 18/7/2017
 
 class opts_cnn_emotic_1_class:
-    load_torch = False
-    dirmodel = []
-    correct_block2 = False
-    correct_avgpool = False
+    def __init__(self):
+        self.load_torch = False
+        self.dirmodel = []
+        self.correct_block2 = False
+        self.correct_avgpool = False
     
 
 class general_options_class:
-    # Main actions:
-    train = True
-    evaluate_model = True
+    def __init__(self):
+        # Main actions:
+        self.train = True
+        self.evaluate_model = True
+        
+        self.modelname = 'cnn_emotic_1'
+        # Other options:
+        self.normalize = 1 # 0: no division by std nor mean subtracted; 1: division by std and mean subtracted; 2: only mean subtracted
+        self.shuffle = False # shuffle the dataset to change its order
+        self.batch_size = 2
+        self.dirbase = '/home/xian/eclipse-workspace/emotic_tf/'
+        self.seed = -1 # random seed (-1 means no seed specified)
+        self.all_classes_in_batch = False
+        self.keep_prob_train = 0.5 # for the dropout layer, during training.
+        
+        self.cnn_opts = {
+            'cnn_emotic_1': opts_cnn_emotic_1_class()
+        }
     
-    modelname = 'cnn_emotic_1'
-    # Other options:
-    normalize = 1 # 0: no division by std nor mean subtracted; 1: division by std and mean subtracted; 2: only mean subtracted
-    shuffle = False # shuffle the dataset to change its order
-    batch_size = 2
-    dirbase = '/home/xian/eclipse-workspace/emotic_tf/'
-    seed = -1 # random seed (-1 means no seed specified)
-    all_classes_in_batch = False
-    keep_prob_train = 0.5 # for the dropout layer, during training.
     
-    cnn_opts = {
-        'cnn_emotic_1': opts_cnn_emotic_1_class()
-    }
+        # Training options:
+        self.nsteps = 10000 # Number of training steps
+        self.nsteps_print_batch_id = 1
+        self.nsteps_trainloss = 200
+        self.nsteps_valloss = 200
+        self.nsteps_save = 1000
+        self.initial_learning_rate = 1e-4
 
 
-    # Training options:
-    nsteps = 10000 # Number of training steps
-    nsteps_print_batch_id = 1
-    nsteps_trainloss = 200
-    nsteps_valloss = 200
-    nsteps_save = 1000
-    initial_learning_rate = 1e-4
+
+
+
+
+
+

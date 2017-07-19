@@ -10,18 +10,19 @@ from data_loader import data_loader
 import time
 from params import NDIM_DISC, NDIM_CONT, category_names, category_paper_order
 import sys
+import logging
 
 
 ###########################################################################################################
 ### ****
-def train(opts):
+def train(opts, dircase):
     # Parameter for discrete weights:
     ldisc_c = 1.2 / 10
     # Initialize array for discrete weights.
     ldisc_weights = np.zeros(NDIM_DISC, dtype=np.float32)
     
-    # Create directory to store results:
-    modelname, dircase = tools.prepare_dircase(opts)
+    # Model name with path:
+    modelname = dircase + '/model'
     
     # Get all the parameters and variables of the network and its loss:
     graph = tf.get_default_graph()
@@ -67,9 +68,9 @@ def train(opts):
         graph = tf.get_default_graph()
         
         # Save initial model:
-        print('Saving model...')
+        logging.info('Saving model...')
         saver.save(sess, modelname, global_step=0)
-        print('Done')
+        logging.info('Done')
         
         # Main loop:
         batch_id = 0
@@ -77,7 +78,7 @@ def train(opts):
             batch_id = batch_id + 1
             
             if batch_id % opts.nsteps_print_batch_id == 0:
-                print('batch %i / %i' % (i+1, opts.nsteps))
+                logging.info('batch %i / %i' % (i+1, opts.nsteps))
             
             # Load batch:
             im_full_prep_batch, im_body_prep_batch, true_labels_cont, true_labels_disc = data_train.load_batch_with_labels()
@@ -100,58 +101,59 @@ def train(opts):
             # Loss and metrics in the current train batch:
             if batch_id % opts.nsteps_trainloss == 0:
                 batches_train.append(batch_id)
-                print('Doing evaluation on train set...')
+                logging.info('Doing evaluation on train set...')
                 train_loss, _, mean_err, mean_ap = evaluate_on_dataset(sess, graph, data_train, opts)
-                print('Train loss: %f' % train_loss)
-                print('Train mean AP: ' + str(mean_ap))
-                print('Train Mean Error: ' + str(mean_err))
+                logging.info('Train loss: %f' % train_loss)
+                logging.info('Train mean AP: ' + str(mean_ap))
+                logging.info('Train Mean Error: ' + str(mean_err))
                 train_loss_list.append(train_loss)
                 train_metrics.append([np.mean(mean_err), mean_ap])
     
             # Loss and metrics over the validation set:
             if batch_id % opts.nsteps_valloss == 0:
                 batches_val.append(batch_id)
-                print('Doing validation...')
+                logging.info('Doing validation...')
                 val_loss, _, mean_err, mean_ap = evaluate_on_dataset(sess, graph, data_val, opts)
-                print('Validation loss: %f' % val_loss)
-                print('Validation mean AP: ' + str(mean_ap))
-                print('Validation Mean Error: ' + str(mean_err))
+                logging.info('Validation loss: %f' % val_loss)
+                logging.info('Validation mean AP: ' + str(mean_ap))
+                logging.info('Validation Mean Error: ' + str(mean_err))
                 val_loss_list.append(val_loss)
                 val_metrics.append([np.mean(mean_err), mean_ap])
     
             # Save model:
             if batch_id % opts.nsteps_save == 0:
-                print('Saving model...')
+                logging.info('Saving model...')
                 saver.save(sess, modelname, global_step=batch_id)
-                print('Done')
+                logging.info('Done')
     
         # Validate the final model on the validation set:
         # (check we haven't saved already the last step)
         if opts.nsteps % opts.nsteps_valloss != 0:
             batches_val.append(batch_id)
-            print('Doing validation...')
+            logging.info('Doing validation...')
             val_loss, ap, mean_err, mean_ap = evaluate_on_dataset(sess, graph, data_val, opts)
-            print('Validation loss: %f' % val_loss)
-            print('Validation mean AP: ' + str(mean_ap))
-            print('Validation Mean Error: ' + str(mean_err))
+            logging.info('Validation loss: %f' % val_loss)
+            logging.info('Validation mean AP: ' + str(mean_ap))
+            logging.info('Validation Mean Error: ' + str(mean_err))
             val_loss_list.append(val_loss)
             val_metrics.append([np.mean(mean_err), mean_ap])
             # Show Avergae Precision for each class, in the same order as the paper:
-            print('Validation AP:')
+            logging.info('Validation AP:')
             for cat_idx in range(NDIM_DISC):
-                print(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap[category_paper_order[cat_idx] - 1] * 100))
+                logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap[category_paper_order[cat_idx] - 1] * 100))
         
         # Save the final model:
         # (check we haven't saved already the last step)
         if opts.nsteps % opts.nsteps_save != 0:
-            print('Saving model...')
+            logging.info('Saving model...')
             saver.save(sess, modelname, global_step=opts.nsteps)
-            print('Done')
+            logging.info('Done')
     
     # Final time:
     end = time.time()
-    print('-----------------------------------')
-    print('Elapsed time: ' + str(end - start))
+    logging.info('')
+    logging.info('-----------------------------------')
+    logging.info('Elapsed time: ' + str(end - start))
     
     # Plot results:
     if len(batches_train) > 0 and len(batches_val) > 1:
@@ -344,36 +346,44 @@ def evaluate_model(opts):
         graph = tf.get_default_graph()
     
         # Loss and metrics over the train set:
-        print('')
-        print('Evaluating on train set...')
-        loss_train, _, mean_error_train, mean_ap_train = evaluate_on_dataset(sess, graph, data_train, opts)
-        print('Train loss: %f' % loss_train)
-        print('Train mean AP: ' + str(mean_ap_train))
-        print('Train Mean Error: ' + str(mean_error_train))
+        logging.info('')
+        logging.info('Evaluating on train set...')
+        loss_train, ap_train, mean_error_train, mean_ap_train = evaluate_on_dataset(sess, graph, data_train, opts)
+        logging.info('Train loss: %f' % loss_train)
+        logging.info('Train mean AP: ' + str(mean_ap_train))
+        logging.info('Train Mean Error: ' + str(mean_error_train))
+        # Show Avergae Precision for each class, in the same order as the paper:
+        logging.info('Train AP:')
+        for cat_idx in range(NDIM_DISC):
+            logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_train[category_paper_order[cat_idx] - 1] * 100))
     
         # Loss and metrics over the validation set:
-        print('')
-        print('Evaluating on validation set...')
-        loss_val, _, mean_error_val, mean_ap_val = evaluate_on_dataset(sess, graph, data_val, opts)
-        print('Validation loss: %f' % loss_val)
-        print('Validation mean AP: ' + str(mean_ap_val))
-        print('Validation Mean Error: ' + str(mean_error_val))
+        logging.info('')
+        logging.info('Evaluating on validation set...')
+        loss_val, ap_val, mean_error_val, mean_ap_val = evaluate_on_dataset(sess, graph, data_val, opts)
+        logging.info('Validation loss: %f' % loss_val)
+        logging.info('Validation mean AP: ' + str(mean_ap_val))
+        logging.info('Validation Mean Error: ' + str(mean_error_val))
+        # Show Avergae Precision for each class, in the same order as the paper:
+        logging.info('Validation AP:')
+        for cat_idx in range(NDIM_DISC):
+            logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_val[category_paper_order[cat_idx] - 1] * 100))
     
         # Loss and metrics over the test set:
-        print('')
-        print('Evaluating on test set...')
+        logging.info('')
+        logging.info('Evaluating on test set...')
         loss_test, ap_test, mean_error_test, mean_ap_test = evaluate_on_dataset(sess, graph, data_test, opts)
-        print('Test loss: %f' % loss_test)
-        print('Test mean AP: ' + str(mean_ap_test))
-        print('Test Mean Error: ' + str(mean_error_test))
-    
-    # Show Avergae Precision for each class, in the same order as the paper:
-    print('Test AP:')
-    for cat_idx in range(NDIM_DISC):
-        print(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_test[category_paper_order[cat_idx] - 1] * 100))
+        logging.info('Test loss: %f' % loss_test)
+        logging.info('Test mean AP: ' + str(mean_ap_test))
+        logging.info('Test Mean Error: ' + str(mean_error_test))
+        # Show Avergae Precision for each class, in the same order as the paper:
+        logging.info('Test AP:')
+        for cat_idx in range(NDIM_DISC):
+            logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_test[category_paper_order[cat_idx] - 1] * 100))
     
     # Final time:
     end = time.time()
-    print('-----------------------------------')
-    print('Elapsed time: ' + str(end - start))
+    logging.info('')
+    logging.info('-----------------------------------')
+    logging.info('Elapsed time: ' + str(end - start))
 
