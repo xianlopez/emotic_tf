@@ -13,7 +13,7 @@ import logging
 
 ###########################################################################################################
 ### ****
-def train(sess, saver, opts, dircase, data_train, data_val):
+def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     # Parameter for discrete weights:
     ldisc_c = 1.2 / 10
     # Initialize array for discrete weights.
@@ -73,8 +73,8 @@ def train(sess, saver, opts, dircase, data_train, data_val):
         for cat_idx in range(NDIM_DISC):
             ldisc_weights[cat_idx] = 1. / np.log(ldisc_c + np.sum(true_labels_disc[:,cat_idx]))
         
-        _, curr_loss = \
-            sess.run([train_step, L_comb], feed_dict={x_f: im_full_prep_batch,
+        _, grads_and_vars, curr_loss = \
+            sess.run([train_step, gradients, L_comb], feed_dict={x_f: im_full_prep_batch,
                 x_b: im_body_prep_batch,
                 keep_prob: opts.keep_prob_train,
                 y_true_cont: true_labels_cont,
@@ -84,6 +84,15 @@ def train(sess, saver, opts, dircase, data_train, data_val):
                 loss_disc_weights: ldisc_weights,
                 loss_cont_margin: 0,
                 loss_cont_saturation: 1500})
+        
+        if opts.debug:
+            count = -1
+            for gv in grads_and_vars:
+                count = count + 1
+                if np.any(np.isnan(gv[0])):
+                    logging.warning('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
+                if np.any(np.isnan(gv[1])):
+                    logging.warning('Found nan in variable ' + str(tf.trainable_variables()[count]))
         
         if batch_id % opts.nsteps_print_batch_id == 0:
             logging.info('loss: ' + str(curr_loss))

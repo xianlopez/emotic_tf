@@ -600,6 +600,8 @@ class cnn_builder_class:
         
         # Operation to apply the gradietns:
         optimizer.apply_gradients(gradients, name='apply_grads_adam')
+        
+        return gradients
 
 
 

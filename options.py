@@ -26,16 +26,18 @@ opts.initial_learning_rate = 1e-4
 opts.train = 1
 opts.evaluate_model = 0
 
-opts.evaluate_initial = 1
+opts.evaluate_initial = 0
 opts.save_initial = 0
 
-opts.restore_model = 1
+opts.debug = 1
+
+opts.restore_model = 0
 opts.checkpoint = 10
 opts.dir_saved_model = '/home/xian/eclipse-workspace/emotic_tf/experiments/day_2017_07_20/case_145'
 
 # CNN EMOTIC options:
-opts.cnn_opts['cnn_emotic_1'].load_torch = False
+opts.cnn_opts['cnn_emotic_1'].load_torch = True
 opts.cnn_opts['cnn_emotic_1'].dirmodel = opts.dirbase + 'models/model_15_dropbox/'
-opts.cnn_opts['cnn_emotic_1'].correct_block2 = True
-opts.cnn_opts['cnn_emotic_1'].correct_avgpool = True
+opts.cnn_opts['cnn_emotic_1'].correct_block2 = False
+opts.cnn_opts['cnn_emotic_1'].correct_avgpool = False
 

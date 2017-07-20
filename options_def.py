@@ -55,8 +55,7 @@ class general_options_class:
         self.save_initial = False # Save the initial model, before training
         self.evaluate_initial = False # Evaluate on the validation set the initial model, before training.
 
-
-
+        self.debug = False # Check if there are NaNs in variables and gradients during training
 
 
 

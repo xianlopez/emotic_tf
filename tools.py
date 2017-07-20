@@ -280,6 +280,20 @@ def get_checkpoint(opts):
     return checkpoint
 
 
+###########################################################################################################
+### Postprocess options, adjusting some values and looking for incompatibilities.
+def postprocess_options(opts):
+    # Supress random effects, if asked to:
+    if opts.supress_random:
+        np.random.seed(1)
+        tf.set_random_seed(1)
+        opts.keep_prob_train = 1
+        opts.shuffle = False
+    # It is not possible, by now, to debug and load a saved model.
+    if opts.debug and opts.restore_model:
+        error('Not possible, by now, to debug and load a saved model.')
+
+
 
 
 

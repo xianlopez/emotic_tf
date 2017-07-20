@@ -24,4 +24,6 @@ def build_model(opts):
     cnn_builder.define_loss()
     
     # Define optimizer:
-    cnn_builder.define_optimizer(opts)
+    gradients = cnn_builder.define_optimizer(opts)
+    
+    return gradients
