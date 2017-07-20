@@ -14,10 +14,6 @@ import time
 import logging
 import sys
 
-# Limit GPU's memory usage by tensorflow:
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.5
-
 
 ###########################################################################################################
 ### Load annotations
@@ -149,7 +145,7 @@ def category_in_annotation(annotation, idx_cat0):
 
 ###########################################################################################################
 ### Plot loss and metrics over the training process.
-def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, metrics_val, metric_names, dircase):
+def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, metrics_val, metric_names, dircase, opts):
     # batches_train: number of batch of each train measurement.
     # batches_val: number of batch of each validation measurement.
     # loss_train: loss in the training batches. len(loss_train) = len(batches_train)
@@ -189,9 +185,6 @@ def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, 
     ax2.set_ylabel('Metric')
     ax1.set_xlabel('Batch')
     
-    # ??
-#    fig.tight_layout()
-    
     # Add legend
     plt.legend(loc='upper left')
     ax1.legend(loc='upper left')
@@ -199,8 +192,8 @@ def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, 
     
     fig.savefig(dircase + '/training_history.png')
     
-#    plt.show(block=False)
-    plt.show()
+    if opts.show_training_history:
+        plt.show()
 
 
 ###########################################################################################################
@@ -275,6 +268,16 @@ def write_options(opts, dircase):
         f.write('-----------------\n')
         for key, val in vars(opts.cnn_opts[opts.modelname]).items():
             f.write('%s: %s\n' % (key, str(val)))
+
+
+###########################################################################################################
+### Get checkpoint to restore a model.
+def get_checkpoint(opts):
+    if opts.checkpoint == 'last':
+        checkpoint = tf.train.latest_checkpoint(opts.dir_saved_model)
+    else:
+        checkpoint = opts.dir_saved_model + '/model-' + str(opts.checkpoint)
+    return checkpoint
 
 
 

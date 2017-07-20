@@ -7,6 +7,8 @@ NDIM_CONT = 3
 
 BN_EPS = 0.001
 
+STD_VAR_INI = 1e-2
+
 # Mean and standard deviation for each channel:
 emotic_mean = [0.45897533113801, 0.44155118600299, 0.40552199274783]
 emotic_std = [0.23027497714954, 0.22752317402935, 0.23638979553161]

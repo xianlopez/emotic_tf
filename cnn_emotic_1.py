@@ -3,14 +3,22 @@
 import tensorflow as tf
 import collections
 import numpy as np
-from params import NDIM_DISC, NDIM_CONT, BN_EPS
+from params import NDIM_DISC, NDIM_CONT, BN_EPS, STD_VAR_INI
 import tools
 
 
 ###########################################################################################################
 ### ********
 def weight_variable(shape, name):
-    initial = tf.truncated_normal(shape, stddev = 0.1)
+    initial = tf.truncated_normal(shape, stddev = STD_VAR_INI)
+    return tf.Variable(initial, name=name)
+
+
+###########################################################################################################
+### ********
+def weight_variable_xavier(shape, dimin, dimout, name):
+#     initial = tf.truncated_normal(shape, stddev = np.sqrt(3.0 / (dimin + dimout)))
+    initial = tf.random_uniform(shape, minval = -np.sqrt(6.0 / (dimin + dimout)), maxval = np.sqrt(6.0 / (dimin + dimout)))
     return tf.Variable(initial, name=name)
 
 
@@ -64,14 +72,22 @@ def random_variables_block(dim_in, dim_mid, dim_out, kernelW, kernelH, var_dict,
     # Base name, including path id and block id:
     basename = 'p' + str(path_id) + '_b' + str(block_id) + '_'
     # Create variables and add them to dictionary:
-    var_dict[basename + 'conv1_W'] = weight_variable([kernelW, kernelH, dim_in, dim_mid], name=basename+'conv1_W')
+#     var_dict[basename + 'conv1_W'] = weight_variable([kernelW, kernelH, dim_in, dim_mid], name=basename+'conv1_W')
+#     var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
+#     var_dict[basename + 'conv2_W'] = weight_variable([kernelH, kernelW, dim_mid, dim_out], name=basename+'conv2_W')
+#     var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
+#     var_dict[basename + 'bn_mean'] = weight_variable([dim_out], name=basename+'bn_mean')
+#     var_dict[basename + 'bn_variance'] = weight_variable([dim_out], name=basename+'bn_variance')
+#     var_dict[basename + 'bn_offset'] = weight_variable([dim_out], name=basename+'bn_offset')
+#     var_dict[basename + 'bn_scale'] = weight_variable([dim_out], name=basename+'bn_scale')
+    var_dict[basename + 'conv1_W'] = weight_variable_xavier([kernelW, kernelH, dim_in, dim_mid], dim_in*kernelW*kernelH, dim_mid*kernelW*kernelH, name=basename+'conv1_W')
     var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
-    var_dict[basename + 'conv2_W'] = weight_variable([kernelH, kernelW, dim_mid, dim_out], name=basename+'conv2_W')
+    var_dict[basename + 'conv2_W'] = weight_variable_xavier([kernelH, kernelW, dim_mid, dim_out], dim_mid*kernelW*kernelH, dim_out*kernelW*kernelH, name=basename+'conv2_W')
     var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
-    var_dict[basename + 'bn_mean'] = weight_variable([dim_out], name=basename+'bn_mean')
-    var_dict[basename + 'bn_variance'] = weight_variable([dim_out], name=basename+'bn_variance')
-    var_dict[basename + 'bn_offset'] = weight_variable([dim_out], name=basename+'bn_offset')
-    var_dict[basename + 'bn_scale'] = weight_variable([dim_out], name=basename+'bn_scale')
+    var_dict[basename + 'bn_mean'] = bias_variable([dim_out], name=basename+'bn_mean')
+    var_dict[basename + 'bn_variance'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_variance')
+    var_dict[basename + 'bn_offset'] = bias_variable([dim_out], name=basename+'bn_offset')
+    var_dict[basename + 'bn_scale'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_scale')
 
 
 ###########################################################################################################
@@ -431,16 +447,23 @@ class cnn_builder_class:
             [pj_dense_weight, pj_dense_bias] = read_weights_dense(dirbase+'l1_dense.txt', varname='pj_dense')
             [pj_bn_mean, pj_bn_variance, pj_bn_offset, pj_bn_scale] = \
                 read_weights_bn(dirbase+'l2_bn.txt', varname='pj_bn')
-            keep_prob = tf.placeholder(tf.float32, name='keep_prob')
             
         else:
-            pj_dense_weight = weight_variable([768, 256], name='pj_dense_weight')
+#             pj_dense_weight = weight_variable([768, 256], name='pj_dense_weight')
+#             pj_dense_bias = bias_variable([256], name='pj_dense_bias')
+#             pj_bn_mean = weight_variable([256], name='pj_bn_mean')
+#             pj_bn_variance = weight_variable([256], name='pj_bn_variance')
+#             pj_bn_offset = weight_variable([256], name='pj_bn_offset')
+#             pj_bn_scale = weight_variable([256], name='pj_bn_scale')
+            pj_dense_weight = weight_variable_xavier([768, 256], 768, 256, name='pj_dense_weight')
             pj_dense_bias = bias_variable([256], name='pj_dense_bias')
-            pj_bn_mean = weight_variable([256], name='pj_bn_mean')
-            pj_bn_variance = weight_variable([256], name='pj_bn_variance')
-            pj_bn_offset = weight_variable([256], name='pj_bn_offset')
-            pj_bn_scale = weight_variable([256], name='pj_bn_scale')
-            keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+            pj_bn_mean = bias_variable([256], name='pj_bn_mean')
+            pj_bn_variance = weight_variable_xavier([256], 256, 256, name='pj_bn_variance')
+            pj_bn_offset = bias_variable([256], name='pj_bn_offset')
+            pj_bn_scale = weight_variable_xavier([256], 256, 256, name='pj_bn_scale')
+        
+        # Probability of keeping units in the dropout layer:
+        keep_prob = tf.placeholder(tf.float32, name='keep_prob')
 
         # Model
         pj_join = tf.concat([p1_flat, p2_flat], 1, name='pj_join')
@@ -465,14 +488,20 @@ class cnn_builder_class:
             [yd_weight, yd_bias] = read_weights_dense(dirbase+'l7_dense.txt', varname='yd')
             
         else:
-            yc_weight = weight_variable([256, NDIM_CONT], name='yc_weight')
+#             yc_weight = weight_variable([256, NDIM_CONT], name='yc_weight')
+#             yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
+#             yd_weight = weight_variable([256, NDIM_DISC], name='yd_weight')
+#             yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
+            yc_weight = weight_variable_xavier([256, NDIM_CONT], 256, NDIM_CONT, name='yc_weight')
             yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
-            yd_weight = weight_variable([256, NDIM_DISC], name='yd_weight')
+            yd_weight = weight_variable_xavier([256, NDIM_DISC], 256, NDIM_DISC, name='yd_weight')
             yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
 
         # Model
-        yc = tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias, name='yc')
-        yd = tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias, name='yd')
+#         yc = tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias, name='yc')
+#         yd = tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias, name='yd')
+        yc = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias), name='yc')
+        yd = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias), name='yd')
 
         return yc, yd
 
@@ -530,7 +559,9 @@ class cnn_builder_class:
         # Discrete loss:
         dif_disc_sq = tf.square(y_pred_disc - y_true_disc, name='dif_disc_sq')
         weights_expanded1 = tf.expand_dims(loss_disc_weights, axis=0, name='weights_expanded1')
-        aux1_disc = tf.stack([tf.Variable(self.batch_size), tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux1_disc')
+#         aux1_disc = tf.stack([tf.Variable(self.batch_size), tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux1_disc')
+        auxtemp1 = tf.cast(tf.ones(()) * self.batch_size, dtype=tf.int32)
+        aux1_disc = tf.stack([auxtemp1, tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux1_disc')
         weights_expanded2 = tf.tile(weights_expanded1, multiples=aux1_disc, name='weights_expanded2')
         aux2_disc = dif_disc_sq * weights_expanded2
         L_disc = tf.reduce_sum(aux2_disc) / (self.batch_size * NDIM_DISC)
@@ -553,6 +584,22 @@ class cnn_builder_class:
         }
         return loss_dict
 
+
+    ########################################################################################
+    #### Define optimizer:
+    def define_optimizer(self, opts):
+        # Get graph:
+        graph = tf.get_default_graph()
+        
+        # Define optimizer:
+        optimizer = tf.train.AdamOptimizer(opts.initial_learning_rate)
+        
+        # Operation to compute the gradients:
+        L_comb = graph.get_tensor_by_name('L_comb:0')
+        gradients = optimizer.compute_gradients(L_comb)
+        
+        # Operation to apply the gradietns:
+        optimizer.apply_gradients(gradients, name='apply_grads_adam')
 
 
 

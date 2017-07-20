@@ -28,9 +28,6 @@ class data_loader:
         self.nimages = len(self.annotations)
         self.n_batches_per_epoch = np.int32(np.ceil(np.float32(self.nimages) / np.float32(self.batch_size)))
         self.n_images_per_epoch = self.batch_size * self.n_batches_per_epoch
-        # Fix the random seed, if provided:
-        if opts.seed >= 0:
-            np.random.seed(opts.seed)
         # Build the array with the indexes of all images of one epoch:
         self.prepare_epoch()
     
@@ -45,7 +42,10 @@ class data_loader:
         # the last batch:
         empty_slots = self.n_images_per_epoch - self.nimages
         if empty_slots > 0:
-            self.indexes = np.concatenate((self.indexes, np.random.choice(range(self.nimages), empty_slots, replace=False)))
+            if self.shuffle:
+                self.indexes = np.concatenate((self.indexes, np.random.choice(range(self.nimages), empty_slots, replace=False)))
+            else:
+                self.indexes = np.concatenate((self.indexes, range(self.nimages)[0:empty_slots]))
         # If told to provide at least one instance of each class in every batch, do so:
         if self.all_classes_in_batch:
             # We put the shuffled indexes into unused_indexes, and free self.indexes (then we'll fill it again

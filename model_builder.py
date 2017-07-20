@@ -22,3 +22,6 @@ def build_model(opts):
     
     # Define loss:
     cnn_builder.define_loss()
+    
+    # Define optimizer:
+    cnn_builder.define_optimizer(opts)
