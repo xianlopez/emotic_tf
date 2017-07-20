@@ -11,6 +11,7 @@ class opts_cnn_emotic_1_class:
         self.dirmodel = []
         self.correct_block2 = False
         self.correct_avgpool = False
+        self.ldisc_c = 1.2 / 10
     
 
 class general_options_class:

@@ -54,26 +54,21 @@ else:
 # Start clock:
 start = time.time()
 
-sess =  tf.Session(config=tf_config)
+with tf.Session(config=tf_config) as sess:
 
-if opts.restore_model:
-    checkpoint = tools.get_checkpoint(opts)
-    saver.restore(sess, checkpoint)
-else:
-    sess.run(tf.global_variables_initializer())
+    if opts.restore_model:
+        checkpoint = tools.get_checkpoint(opts)
+        saver.restore(sess, checkpoint)
+    else:
+        sess.run(tf.global_variables_initializer())
     
-# sess = tf_debug.LocalCLIDebugWrapperSession(sess)
-# sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
-
-# Train:
-if opts.train:
-    cnn_actions.train(sess, saver, opts, dircase, data_train, data_val, gradients)
-
-# Do evaluation:
-if opts.evaluate_model:
-    cnn_actions.evaluate_model(sess, opts, data_train, data_val, data_test)
+    # Train:
+    if opts.train:
+        cnn_actions.train(sess, saver, opts, dircase, data_train, data_val, gradients)
     
-sess.close()
+    # Do evaluation:
+    if opts.evaluate_model:
+        cnn_actions.evaluate_model(sess, opts, data_train, data_val, data_test)
 
 logging.info('Process finished')
 

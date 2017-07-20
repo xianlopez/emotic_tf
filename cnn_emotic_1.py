@@ -254,6 +254,7 @@ class cnn_builder_class:
     correct_block2 = False
     correct_avgpool = False
     batch_size = 0
+    ldisc_c = 1.2 / 10
 
 
     ########################################################################################
@@ -263,6 +264,7 @@ class cnn_builder_class:
         self.dirmodel = cnn_opts.dirmodel
         self.correct_block2 = cnn_opts.correct_block2
         self.correct_avgpool = cnn_opts.correct_avgpool
+        self.ldisc_c = cnn_opts.ldisc_c
         self.batch_size = batch_size
 
 
@@ -543,7 +545,6 @@ class cnn_builder_class:
         # Parameters:
         w_cont = tf.placeholder(tf.float32, shape=(), name='w_cont') # defaults to 1
         w_disc = tf.placeholder(tf.float32, shape=(), name='w_disc') # defaults to 1/6
-        loss_disc_weights = tf.placeholder(tf.float32, shape=(NDIM_DISC), name='loss_disc_weights')
         loss_cont_margin = tf.placeholder(tf.float32, shape=(), name='loss_cont_margin') # defaults to 0
         loss_cont_saturation = tf.placeholder(tf.float32, shape=(), name='loss_cont_saturation') # defaults to 1500
 
@@ -557,14 +558,15 @@ class cnn_builder_class:
         L_cont = tf.reduce_sum(aux3_cont) / (self.batch_size * NDIM_CONT)
 
         # Discrete loss:
+        aux1_disc = tf.log(tf.add(tf.reduce_sum(y_true_disc, axis=0), self.ldisc_c), name='aux1_disc')
+        ldisc_weights = tf.divide(tf.ones((NDIM_DISC)), aux1_disc, name='ldisc_weights')
         dif_disc_sq = tf.square(y_pred_disc - y_true_disc, name='dif_disc_sq')
-        weights_expanded1 = tf.expand_dims(loss_disc_weights, axis=0, name='weights_expanded1')
-#         aux1_disc = tf.stack([tf.Variable(self.batch_size), tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux1_disc')
-        auxtemp1 = tf.cast(tf.ones(()) * self.batch_size, dtype=tf.int32)
-        aux1_disc = tf.stack([auxtemp1, tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux1_disc')
-        weights_expanded2 = tf.tile(weights_expanded1, multiples=aux1_disc, name='weights_expanded2')
-        aux2_disc = dif_disc_sq * weights_expanded2
-        L_disc = tf.reduce_sum(aux2_disc) / (self.batch_size * NDIM_DISC)
+        weights_expanded1 = tf.expand_dims(ldisc_weights, axis=0, name='weights_expanded1')
+        aux2_disc = tf.cast(tf.ones(()) * self.batch_size, dtype=tf.int32)
+        aux3_disc = tf.stack([aux2_disc, tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux3_disc')
+        weights_expanded2 = tf.tile(weights_expanded1, multiples=aux3_disc, name='weights_expanded2')
+        aux4_disc = dif_disc_sq * weights_expanded2
+        L_disc = tf.reduce_sum(aux4_disc) / (self.batch_size * NDIM_DISC)
 
         # Combination:
         weighted_cont = w_cont * L_cont
@@ -578,7 +580,6 @@ class cnn_builder_class:
             'y_true_disc'         : y_true_disc,
             'w_cont'              : w_cont,
             'w_disc'              : w_disc,
-            'loss_disc_weights'   : loss_disc_weights,
             'loss_cont_margin'    : loss_cont_margin,
             'loss_cont_saturation': loss_cont_saturation
         }

@@ -14,10 +14,6 @@ import logging
 ###########################################################################################################
 ### ****
 def train(sess, saver, opts, dircase, data_train, data_val, gradients):
-    # Parameter for discrete weights:
-    ldisc_c = 1.2 / 10
-    # Initialize array for discrete weights.
-    ldisc_weights = np.zeros(NDIM_DISC, dtype=np.float32)
     
     # Model name with path:
     modelname = dircase + '/model'
@@ -32,7 +28,6 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
     w_cont               = graph.get_tensor_by_name('w_cont:0')
     w_disc               = graph.get_tensor_by_name('w_disc:0')
-    loss_disc_weights    = graph.get_tensor_by_name('loss_disc_weights:0')
     loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
     loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
     train_step           = graph.get_operation_by_name('apply_grads_adam')
@@ -52,11 +47,14 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
         logging.info('Done')
     
     if opts.evaluate_initial:
+        batches_val.append(0)
         logging.info('Doing validation...')
         val_loss, _, mean_err, mean_ap = evaluate_on_dataset(sess, graph, data_val, opts)
         logging.info('Validation loss: %f' % val_loss)
         logging.info('Validation mean AP: ' + str(mean_ap))
         logging.info('Validation Mean Error: ' + str(mean_err))
+        val_loss_list.append(val_loss)
+        val_metrics.append([np.mean(mean_err), mean_ap])
         
     # Main loop:
     batch_id = 0
@@ -69,10 +67,7 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
         # Load batch:
         im_full_prep_batch, im_body_prep_batch, true_labels_cont, true_labels_disc = data_train.load_batch_with_labels()
         
-        # Compute weights:
-        for cat_idx in range(NDIM_DISC):
-            ldisc_weights[cat_idx] = 1. / np.log(ldisc_c + np.sum(true_labels_disc[:,cat_idx]))
-        
+        # Take a training step:
         _, grads_and_vars, curr_loss = \
             sess.run([train_step, gradients, L_comb], feed_dict={x_f: im_full_prep_batch,
                 x_b: im_body_prep_batch,
@@ -81,10 +76,10 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
                 y_true_disc: true_labels_disc,
                 w_cont: 1,
                 w_disc: 1./6.,
-                loss_disc_weights: ldisc_weights,
                 loss_cont_margin: 0,
                 loss_cont_saturation: 1500})
         
+        # Look for NaNs on variables and gradients:
         if opts.debug:
             count = -1
             for gv in grads_and_vars:
@@ -94,6 +89,7 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
                 if np.any(np.isnan(gv[1])):
                     logging.warning('Found nan in variable ' + str(tf.trainable_variables()[count]))
         
+        # Report loss on current batch:
         if batch_id % opts.nsteps_print_batch_id == 0:
             logging.info('loss: ' + str(curr_loss))
             
@@ -170,12 +166,8 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
     y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
     w_cont               = graph.get_tensor_by_name('w_cont:0')
     w_disc               = graph.get_tensor_by_name('w_disc:0')
-    loss_disc_weights    = graph.get_tensor_by_name('loss_disc_weights:0')
     loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
     loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
-    
-    ldisc_c = 1.2 / 10
-    ldisc_weights = np.zeros(26, dtype=np.float32)
     
     loss = 0
     y_cont_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_CONT), dtype=np.float32)
@@ -193,13 +185,9 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
             progress = progress + progress_step
             print('%i%%...' % progress),
             sys.stdout.flush()
-        
         # Load batch:
         im_full_batch, im_body_batch, true_labels_cont, true_labels_disc = \
             data_loader.load_batch_with_labels()
-        # Compute weights:
-        for cat_idx in range(26):
-            ldisc_weights[cat_idx] = 1. / np.log(ldisc_c + np.sum(true_labels_disc[:,cat_idx]))
         # Run network:
         y_cont_pred, y_disc_pred, curr_loss = sess.run([yc, yd, L_comb], feed_dict={x_f: im_full_batch, 
             x_b: im_body_batch, 
@@ -208,7 +196,6 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
             y_true_disc: true_labels_disc,
             w_cont: 1,
             w_disc: 1./6.,
-            loss_disc_weights: ldisc_weights,
             loss_cont_margin: 0,
             loss_cont_saturation: 1500})
         # Accumulate loss:
