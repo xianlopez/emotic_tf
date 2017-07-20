@@ -34,6 +34,8 @@ class general_options_class:
         self.nsteps_save = 1000
         self.initial_learning_rate = 1e-4
         
+        self.momentum = 0.9
+        
         # To restore a previously saved model:
         self.restore_model = False
         self.checkpoint = 'last' # 'last', or global_step to specify one.
@@ -58,6 +60,7 @@ class general_options_class:
 
         self.debug = False # Check if there are NaNs in variables and gradients during training
 
-
+        self.loss_type = 'orig' # Select among the following options ('orig', 'onlycont', 'onlydisc', 'simple1)
+        self.optimizer = 'adam' # Select among the following options ('amad', 'sgd', 'momentum', 'rmsprop')
 
 

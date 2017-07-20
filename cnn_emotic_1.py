@@ -532,8 +532,8 @@ class cnn_builder_class:
 
 
     ########################################################################################
-    #### Define loss:
-    def define_loss(self):
+    #### Define original loss, as described in the paper and the Torch code:
+    def define_loss_orig(self):
         # Get graph:
         graph = tf.get_default_graph()
         # Inputs:
@@ -555,7 +555,7 @@ class cnn_builder_class:
         aux1_cont = dif_cont_sq * over_margin * (1 - saturated)
         aux2_cont = tf.zeros((self.batch_size, 3)) + tf.ones((self.batch_size, 3)) * saturated * loss_cont_saturation
         aux3_cont = aux1_cont + aux2_cont
-        L_cont = tf.reduce_sum(aux3_cont) / (self.batch_size * NDIM_CONT)
+        L_cont = tf.divide(tf.reduce_sum(aux3_cont), tf.cast((self.batch_size * NDIM_CONT), dtype=tf.float32), name='L_cont')
 
         # Discrete loss:
         aux1_disc = tf.log(tf.add(tf.reduce_sum(y_true_disc, axis=0), self.ldisc_c), name='aux1_disc')
@@ -566,7 +566,146 @@ class cnn_builder_class:
         aux3_disc = tf.stack([aux2_disc, tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux3_disc')
         weights_expanded2 = tf.tile(weights_expanded1, multiples=aux3_disc, name='weights_expanded2')
         aux4_disc = dif_disc_sq * weights_expanded2
-        L_disc = tf.reduce_sum(aux4_disc) / (self.batch_size * NDIM_DISC)
+        L_disc = tf.divide(tf.reduce_sum(aux4_disc), tf.cast((self.batch_size * NDIM_DISC), dtype=tf.float32), name='L_disc')
+
+        # Combination:
+        weighted_cont = w_cont * L_cont
+        weighted_disc = w_disc * L_disc
+        L_comb = tf.add(weighted_cont, weighted_disc, name='L_comb')
+
+        # Return a dictionary with the loss output and all its parameters and inputs:
+        loss_dict = {
+            'L_comb'              : L_comb,
+            'y_true_cont'         : y_true_cont,
+            'y_true_disc'         : y_true_disc,
+            'w_cont'              : w_cont,
+            'w_disc'              : w_disc,
+            'loss_cont_margin'    : loss_cont_margin,
+            'loss_cont_saturation': loss_cont_saturation
+        }
+        return loss_dict
+
+
+    ########################################################################################
+    #### Define loss where only the continuous part take effect:
+    def define_loss_onlycont(self):
+        # Get graph:
+        graph = tf.get_default_graph()
+        # Inputs:
+        y_pred_cont = graph.get_tensor_by_name('yc:0')
+        y_pred_disc = graph.get_tensor_by_name('yd:0')
+        y_true_cont = tf.placeholder(tf.float32, shape=(None, NDIM_CONT), name='y_true_cont')
+        y_true_disc = tf.placeholder(tf.float32, shape=(None, NDIM_DISC), name='y_true_disc')
+
+        # Parameters:
+        w_cont = tf.placeholder(tf.float32, shape=(), name='w_cont') # defaults to 1
+        w_disc = tf.placeholder(tf.float32, shape=(), name='w_disc') # defaults to 1/6
+        loss_cont_margin = tf.placeholder(tf.float32, shape=(), name='loss_cont_margin') # defaults to 0
+        loss_cont_saturation = tf.placeholder(tf.float32, shape=(), name='loss_cont_saturation') # defaults to 1500
+
+        # Continuous loss:
+        dif_cont_sq = tf.square(y_pred_cont - y_true_cont)
+        over_margin = tf.cast(tf.greater(dif_cont_sq, loss_cont_margin), dtype=tf.float32)
+        saturated = tf.cast(tf.greater(dif_cont_sq, loss_cont_saturation), dtype=tf.float32)
+        aux1_cont = dif_cont_sq * over_margin * (1 - saturated)
+        aux2_cont = tf.zeros((self.batch_size, 3)) + tf.ones((self.batch_size, 3)) * saturated * loss_cont_saturation
+        aux3_cont = aux1_cont + aux2_cont
+        L_cont = tf.divide(tf.reduce_sum(aux3_cont), tf.cast((self.batch_size * NDIM_CONT), dtype=tf.float32), name='L_cont')
+
+        # Discrete loss:
+        L_disc = tf.multiply(tf.reduce_sum(y_pred_disc), 0)
+
+        # Combination:
+        weighted_cont = w_cont * L_cont
+        weighted_disc = w_disc * L_disc
+        L_comb = tf.add(weighted_cont, weighted_disc, name='L_comb')
+
+        # Return a dictionary with the loss output and all its parameters and inputs:
+        loss_dict = {
+            'L_comb'              : L_comb,
+            'y_true_cont'         : y_true_cont,
+            'y_true_disc'         : y_true_disc,
+            'w_cont'              : w_cont,
+            'w_disc'              : w_disc,
+            'loss_cont_margin'    : loss_cont_margin,
+            'loss_cont_saturation': loss_cont_saturation
+        }
+        return loss_dict
+
+
+    ########################################################################################
+    #### Define loss where only the discrete part take effect:
+    def define_loss_onlydisc(self):
+        # Get graph:
+        graph = tf.get_default_graph()
+        # Inputs:
+        y_pred_cont = graph.get_tensor_by_name('yc:0')
+        y_pred_disc = graph.get_tensor_by_name('yd:0')
+        y_true_cont = tf.placeholder(tf.float32, shape=(None, NDIM_CONT), name='y_true_cont')
+        y_true_disc = tf.placeholder(tf.float32, shape=(None, NDIM_DISC), name='y_true_disc')
+
+        # Parameters:
+        w_cont = tf.placeholder(tf.float32, shape=(), name='w_cont') # defaults to 1
+        w_disc = tf.placeholder(tf.float32, shape=(), name='w_disc') # defaults to 1/6
+        loss_cont_margin = tf.placeholder(tf.float32, shape=(), name='loss_cont_margin') # defaults to 0
+        loss_cont_saturation = tf.placeholder(tf.float32, shape=(), name='loss_cont_saturation') # defaults to 1500
+
+        # Continuous loss:
+        L_cont = tf.multiply(tf.reduce_sum(y_pred_cont), 0)
+
+        # Discrete loss:
+        aux1_disc = tf.log(tf.add(tf.reduce_sum(y_true_disc, axis=0), self.ldisc_c), name='aux1_disc')
+        ldisc_weights = tf.divide(tf.ones((NDIM_DISC)), aux1_disc, name='ldisc_weights')
+        dif_disc_sq = tf.square(y_pred_disc - y_true_disc, name='dif_disc_sq')
+        weights_expanded1 = tf.expand_dims(ldisc_weights, axis=0, name='weights_expanded1')
+        aux2_disc = tf.cast(tf.ones(()) * self.batch_size, dtype=tf.int32)
+        aux3_disc = tf.stack([aux2_disc, tf.cast(tf.ones(()), dtype=tf.int32)], axis=0, name='aux3_disc')
+        weights_expanded2 = tf.tile(weights_expanded1, multiples=aux3_disc, name='weights_expanded2')
+        aux4_disc = dif_disc_sq * weights_expanded2
+        L_disc = tf.divide(tf.reduce_sum(aux4_disc), tf.cast((self.batch_size * NDIM_DISC), dtype=tf.float32), name='L_disc')
+
+        # Combination:
+        weighted_cont = w_cont * L_cont
+        weighted_disc = w_disc * L_disc
+        L_comb = tf.add(weighted_cont, weighted_disc, name='L_comb')
+
+        # Return a dictionary with the loss output and all its parameters and inputs:
+        loss_dict = {
+            'L_comb'              : L_comb,
+            'y_true_cont'         : y_true_cont,
+            'y_true_disc'         : y_true_disc,
+            'w_cont'              : w_cont,
+            'w_disc'              : w_disc,
+            'loss_cont_margin'    : loss_cont_margin,
+            'loss_cont_saturation': loss_cont_saturation
+        }
+        return loss_dict
+
+
+    ########################################################################################
+    #### Define simpler loss:
+    def define_loss_simple1(self):
+        # Get graph:
+        graph = tf.get_default_graph()
+        # Inputs:
+        y_pred_cont = graph.get_tensor_by_name('yc:0')
+        y_pred_disc = graph.get_tensor_by_name('yd:0')
+        y_true_cont = tf.placeholder(tf.float32, shape=(None, NDIM_CONT), name='y_true_cont')
+        y_true_disc = tf.placeholder(tf.float32, shape=(None, NDIM_DISC), name='y_true_disc')
+
+        # Parameters:
+        w_cont = tf.placeholder(tf.float32, shape=(), name='w_cont') # defaults to 1
+        w_disc = tf.placeholder(tf.float32, shape=(), name='w_disc') # defaults to 1/6
+        loss_cont_margin = tf.placeholder(tf.float32, shape=(), name='loss_cont_margin') # defaults to 0
+        loss_cont_saturation = tf.placeholder(tf.float32, shape=(), name='loss_cont_saturation') # defaults to 1500
+
+        # Continuous loss:
+        mse = tf.losses.mean_squared_error(labels=y_true_cont, predictions=y_pred_cont)
+        L_cont = tf.divide(mse, tf.cast((self.batch_size * NDIM_DISC), dtype=tf.float32), name='L_cont')
+
+        # Discrete loss:
+        sigmoid_cross_entropy = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true_disc, logits=y_pred_disc))
+        L_disc = tf.divide(sigmoid_cross_entropy, tf.cast((self.batch_size * NDIM_DISC), dtype=tf.float32), name='L_disc')
 
         # Combination:
         weighted_cont = w_cont * L_cont
@@ -593,7 +732,16 @@ class cnn_builder_class:
         graph = tf.get_default_graph()
         
         # Define optimizer:
-        optimizer = tf.train.AdamOptimizer(opts.initial_learning_rate)
+        if opts.optimizer == 'adam':
+            optimizer = tf.train.AdamOptimizer(opts.initial_learning_rate)
+        elif opts.optimizer == 'sgd':
+            optimizer = tf.train.GradientDescentOptimizer(opts.initial_learning_rate)
+        elif opts.optimizer == 'momentum':
+            optimizer = tf.train.MomentumOptimizer(opts.initial_learning_rate, opts.momentum)
+        elif opts.optimizer == 'rmsprop':
+            optimizer = tf.train.RMSPropOptimizer(opts.initial_learning_rate, momentum=opts.momentum)
+        else:
+            tools.error('Optimizer not recognized.')
         
         # Operation to compute the gradients:
         L_comb = graph.get_tensor_by_name('L_comb:0')

@@ -14,14 +14,14 @@ opts.shuffle = 1
 
 opts.batch_size = 64
 
-opts.supress_random = 1
+opts.supress_random = 0
 
-opts.nsteps = 2000
-opts.nsteps_print_batch_id = 1
-opts.nsteps_trainloss = 100
-opts.nsteps_valloss = 100
-opts.nsteps_save = 1000
-opts.initial_learning_rate = 1e-5
+opts.nsteps = 20000
+opts.nsteps_print_batch_id = 10
+opts.nsteps_trainloss = 200
+opts.nsteps_valloss = 200
+opts.nsteps_save = 2000
+opts.initial_learning_rate = 1e-6
 
 opts.train = 1
 opts.evaluate_model = 0
@@ -30,6 +30,9 @@ opts.evaluate_initial = 0
 opts.save_initial = 0
 
 opts.debug = 1
+
+opts.loss_type = 'simple1'
+opts.optimizer = 'momentum'
 
 opts.restore_model = 0
 opts.checkpoint = 'last'

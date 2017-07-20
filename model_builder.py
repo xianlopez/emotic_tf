@@ -21,7 +21,16 @@ def build_model(opts):
     cnn_builder.define_network()
     
     # Define loss:
-    cnn_builder.define_loss()
+    if opts.loss_type == 'orig':
+        cnn_builder.define_loss_orig()
+    elif opts.loss_type == 'onlycont':
+        cnn_builder.define_loss_onlycont()
+    elif opts.loss_type == 'onlydisc':
+        cnn_builder.define_loss_onlydisc()
+    elif opts.loss_type == 'simple1':
+        cnn_builder.define_loss_simple1()
+    else:
+        tools.error('Loss type not recognized.')
     
     # Define optimizer:
     gradients = cnn_builder.define_optimizer(opts)
