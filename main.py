@@ -13,7 +13,7 @@ from data_loader import data_loader
 
 # Load options:
 from options import opts
-    
+
 # Create directory to store results:
 dircase = tools.prepare_dircase(opts)
 

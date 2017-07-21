@@ -47,7 +47,7 @@ class general_options_class:
         # Other options:
         self.normalize = 1 # 0: no division by std nor mean subtracted; 1: division by std and mean subtracted; 2: only mean subtracted
         self.shuffle = True # shuffle the dataset to change its order
-        self.batch_size = 54
+        self.batch_size = 52
         self.dirbase = '/home/xian/eclipse-workspace/emotic_tf/'
 #         self.seed = -1 # random seed (-1 means no seed specified)
         self.all_classes_in_batch = False
@@ -59,8 +59,12 @@ class general_options_class:
         self.evaluate_initial = False # Evaluate on the validation set the initial model, before training.
 
         self.debug = False # Check if there are NaNs in variables and gradients during training
+        self.nsteps_debug = 1
 
         self.loss_type = 'orig' # Select among the following options ('orig', 'onlycont', 'onlydisc', 'simple1)
         self.optimizer = 'adam' # Select among the following options ('amad', 'sgd', 'momentum', 'rmsprop')
+        
+        self.show_training_history = False
+        self.nsteps_plotresults = 500
 
 

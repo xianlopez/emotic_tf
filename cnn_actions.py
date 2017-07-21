@@ -15,6 +15,8 @@ import logging
 ### ****
 def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     
+    metric_names = ['mean_mean_error', 'mean AP ']
+    
     # Model name with path:
     modelname = dircase + '/model'
     
@@ -80,14 +82,14 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
                 loss_cont_saturation: 1500})
         
         # Look for NaNs on variables and gradients:
-        if opts.debug:
+        if opts.debug and batch_id % opts.nsteps_debug == 0:
             count = -1
             for gv in grads_and_vars:
                 count = count + 1
                 if np.any(np.isnan(gv[0])):
-                    logging.warning('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
+                    tools.error('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
                 if np.any(np.isnan(gv[1])):
-                    logging.warning('Found nan in variable ' + str(tf.trainable_variables()[count]))
+                    tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
         
         # Report loss on current batch:
         if batch_id % opts.nsteps_print_batch_id == 0:
@@ -114,6 +116,13 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
             logging.info('Validation Mean Error: ' + str(mean_err))
             val_loss_list.append(val_loss)
             val_metrics.append([np.mean(mean_err), mean_ap])
+    
+        # Plot results in a file:
+        if batch_id % opts.nsteps_plotresults == 0:
+            train_metrics_np = np.asarray(train_metrics)
+            val_metrics_np = np.asarray(val_metrics)
+            tools.plot_train(batches_train, batches_val, train_loss_list, val_loss_list, train_metrics_np, val_metrics_np,
+                             metric_names, dircase, False, batch_id)
 
         # Save model:
         if batch_id % opts.nsteps_save == 0:
@@ -148,8 +157,8 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     if len(batches_train) > 0 and len(batches_val) > 1:
         train_metrics = np.asarray(train_metrics)
         val_metrics = np.asarray(val_metrics)
-        metric_names = ['mean_mean_error', 'mean AP ']
-        tools.plot_train(batches_train, batches_val, train_loss_list, val_loss_list, train_metrics, val_metrics, metric_names, dircase, opts)
+        tools.plot_train(batches_train, batches_val, train_loss_list, val_loss_list, train_metrics, val_metrics,
+                         metric_names, dircase, opts.show_training_history, 'final')
 
 
 ###########################################################################################################

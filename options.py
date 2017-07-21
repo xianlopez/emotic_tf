@@ -16,7 +16,7 @@ opts.batch_size = 64
 
 opts.supress_random = 0
 
-opts.nsteps = 20000
+opts.nsteps = 4000
 opts.nsteps_print_batch_id = 10
 opts.nsteps_trainloss = 200
 opts.nsteps_valloss = 200
@@ -30,8 +30,9 @@ opts.evaluate_initial = 0
 opts.save_initial = 0
 
 opts.debug = 1
+opts.nsteps_debug = 50
 
-opts.loss_type = 'simple1'
+opts.loss_type = 'orig'
 opts.optimizer = 'momentum'
 
 opts.restore_model = 0

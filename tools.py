@@ -145,7 +145,7 @@ def category_in_annotation(annotation, idx_cat0):
 
 ###########################################################################################################
 ### Plot loss and metrics over the training process.
-def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, metrics_val, metric_names, dircase, opts):
+def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, metrics_val, metric_names, dircase, show_training_history, global_step):
     # batches_train: number of batch of each train measurement.
     # batches_val: number of batch of each validation measurement.
     # loss_train: loss in the training batches. len(loss_train) = len(batches_train)
@@ -190,9 +190,14 @@ def plot_train(batches_train, batches_val, loss_train, loss_val, metrics_train, 
     ax1.legend(loc='upper left')
     ax2.legend(loc='upper right')
     
-    fig.savefig(dircase + '/training_history.png')
+    if global_step == 'final':
+        figname = dircase + '/training_history.png'
+    else:
+        figname = dircase + '/training_' + str(global_step) + '.png'
     
-    if opts.show_training_history:
+    fig.savefig(figname)
+    
+    if show_training_history:
         plt.show()
 
 
