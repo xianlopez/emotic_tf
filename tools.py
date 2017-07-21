@@ -17,23 +17,22 @@ import sys
 
 ###########################################################################################################
 ### Load annotations
-def load_annotations(dataset = 'all'):
+def load_annotations(dataset, opts):
     
     if(dataset == 'train'):
-        subset_name = '/home/xian/EMOTIC/train_annotations.txt'
+        subset_name = opts.dirbase + 'train_annotations.txt'
     elif(dataset == 'val'):
-        subset_name = '/home/xian/EMOTIC/val_annotations.txt'
+        subset_name = opts.dirbase + 'val_annotations.txt'
     elif(dataset == 'test'):
-        subset_name = '/home/xian/EMOTIC/test_annotations.txt'
+        subset_name = opts.dirbase + 'test_annotations.txt'
     elif(dataset != 'all'):
         error('dataset not recognized.')
     
-    with open('/home/xian/EMOTIC/annotations_txt.txt', "r") as f:
+    with open(opts.dirbase + 'annotations_txt.txt', "r") as f:
         annotations = list()
         for line in f:
             line_split = line.split(' ')
-            path_rel = line_split[0]
-            path_abs = '/home/xian/EMOTIC/EmpathyDB_images/' + path_rel
+            path_rel = '/' + line_split[0]
             person_index = line_split[1]
             x1 = line_split[2]
             y1 = line_split[3]
@@ -46,7 +45,7 @@ def load_annotations(dataset = 'all'):
             categories = list()
             for idx in range(ncat):
                 categories.append(line_split[9 + idx])
-            cur_annotation = [path_abs, person_index, x1, y1, x2, y2, valence, arousal, dominance]
+            cur_annotation = [path_rel, person_index, x1, y1, x2, y2, valence, arousal, dominance]
             cur_annotation.extend(categories)
             annotations.append(cur_annotation)
     
@@ -69,46 +68,82 @@ def load_annotations(dataset = 'all'):
 
 ###########################################################################################################
 ### Load full and body images, both in png format.
-def load_images(annotation, preprocess):
+def load_images(annotation, opts):
     
     filename = annotation[0]
-    person_idx = annotation[1]
     
-    # Paths for full and body images:
-    base_path = filename[34:len(filename)-4]
-    base_path = '/home/xian/EMOTIC/images_preprocessed' + base_path
+    if opts.load_from_png:
+        person_idx = annotation[1]
+        # Paths for full and body images:
+#         base_path = filename[34:len(filename)-4]
+        base_path = filename[0:len(filename)-4]
+        base_path = opts.emotic_dir_png + base_path
+        path_full = base_path + '.png'
+        path_body = base_path + '_body_' + str(person_idx) + '.png'
+        # Load images:
+        im_full = Image.open(path_full)
+        im_body = Image.open(path_body)
+        # Convert to numpy arrays:
+        im_full_np = np.float32(im_full) / 255
+        im_body_np = np.float32(im_body) / 255
     
-    path_full = base_path + '.png'
-    path_body = base_path + '_body_' + str(person_idx) + '.png'
-    
-    # Load images:
-    im_full = Image.open(path_full)
-    im_body = Image.open(path_body)
-
-    # Convert to numpy arrays:
-    im_full_np = np.float32(im_full) / 255
-    im_body_np = np.float32(im_body) / 255
+    else:
+        # Image path:
+#         filename = filename[34:len(filename)]
+        filename = filename
+        fullpath = opts.emotic_dir_jpg + filename
+        # Load image:
+        im_orig = Image.open(fullpath)
+        # Body bounding box:
+        body_bbox = [int(annotation[2]), int(annotation[3]), int(annotation[4]), int(annotation[5])]
+        # Convert to numpy arrays:
+        im_full_np, im_body_np = preprocess_emotic(im_orig, body_bbox, opts)
     
     # Normalize:
-    if preprocess == 0:
+    if opts.normalize == 0:
         # No normalization
         pass
-    elif preprocess == 1:
+    elif opts.normalize == 1:
         # Full normalization
         for idx_channel in range(3):
             im_full_np[:,:,idx_channel] = im_full_np[:,:,idx_channel] - emotic_mean[idx_channel]
             im_full_np[:,:,idx_channel] = im_full_np[:,:,idx_channel] / emotic_std[idx_channel]
             im_body_np[:,:,idx_channel] = im_body_np[:,:,idx_channel] - emotic_mean[idx_channel]
             im_body_np[:,:,idx_channel] = im_body_np[:,:,idx_channel] / emotic_std[idx_channel]
-    elif preprocess == 2:
+    elif opts.normalize == 2:
         # Normalization only with mean
         for idx_channel in range(3):
             im_full_np[:,:,idx_channel] = im_full_np[:,:,idx_channel] - emotic_mean[idx_channel]
             im_body_np[:,:,idx_channel] = im_body_np[:,:,idx_channel] - emotic_mean[idx_channel]
     else:
-        error('preprocess option not understood.')
+        error('normalize option not understood.')
     
     return im_full_np, im_body_np
+
+
+###########################################################################################################
+### Load image from ImageNet.
+def load_images_onepath(filepath, opts):
+    # Load image:
+    image = Image.open(filepath)
+    # Convert to numpy arrays:
+    im_prep = preprocess_onepath(image, opts)
+    # Normalize:
+    if opts.normalize == 0:
+        # No normalization
+        pass
+    elif opts.normalize == 1:
+        # Full normalization
+        for idx_channel in range(3):
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - emotic_mean[idx_channel]
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] / emotic_std[idx_channel]
+    elif opts.normalize == 2:
+        # Normalization only with mean
+        for idx_channel in range(3):
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - emotic_mean[idx_channel]
+    else:
+        error('normalize option not understood.')
+    return im_prep
 
 
 ###########################################################################################################
@@ -294,10 +329,84 @@ def postprocess_options(opts):
         tf.set_random_seed(1)
         opts.keep_prob_train = 1
         opts.shuffle = False
+        opts.randomize_preprocess = False
+    elif opts.random_seed > 0:
+        # Set seed
+        np.random.seed(opts.random_seed)
+        tf.set_random_seed(opts.random_seed)
     # It is not possible, by now, to debug and load a saved model.
     if opts.debug and opts.restore_model:
         error('Not possible, by now, to debug and load a saved model.')
+    # If we choose to load image with png format, we cannot choose other dataset apart from EMOTIC:
+    if opts.net_arch != 'orig' and opts.load_from_png:
+        error('Not possible to load images with png format from a dataset different from EMOTIC.')
+    # It is not  possible to load the weights from Torch, and at the same time restore a saved model:
+    if opts.restore_model and opts.load_torch:
+        error('Not possible to restore a saved model and at the same time load the weights from Torch.')
 
+
+###########################################################################################################
+### Preprocess image.
+def preprocess_emotic(image, body_bbox, opts):
+    # We assume the image comes with 3 dimensions, being [height, width, nchannels].
+    # Also, the image is a PIL image.
+    # body_bbox should have be a list with [x1, y1, x2, y2], the pixels of the corners of the
+    # bounding box for the body.
+    
+    iW = image.size[0]
+    iH = image.size[1]
+    
+    # Check if it is a black & white image:
+    # (and put the image in "image_full")
+    if image.mode == 'L': # black & white, 8-bit pixels
+        image_full = image.convert('RGB')
+    elif image.mode == 'RGB': # 3x8-bit pixels, true color
+        image_full = image
+    else:
+        error('Unrecognized image mode %s' % image.mode)
+    
+    # Bounding box coordinates:
+    x1 = np.max([body_bbox[0], 1])
+    y1 = np.max([body_bbox[1], 1])
+    x2 = np.min([body_bbox[2], iW])
+    y2 = np.min([body_bbox[3], iH])
+    
+    # Crop the image containing the body:
+    image_body = image_full.crop((x1-1, y1-1, x2, y2))
+    
+    # Resize:
+    image_body = image_body.resize((128, 128), resample=Image.BILINEAR)
+    
+    # Resize the full image to ensure its lowest dimension is 256:
+    if iW < iH:
+        cW = 256
+        cH = 256 * iH / iW
+    else:
+        cW = 256 * iW / iH
+        cH = 256
+    image_full = image_full.resize((cW, cH), resample=Image.BILINEAR)
+    
+    if opts.randomize_preprocess:
+        h1 = np.ceil(np.random.rand() * (cH - 224))
+        w1 = np.ceil(np.random.rand() * (cW - 224))
+    else:
+        h1 = np.ceil(0.5 * (cH - 224))
+        w1 = np.ceil(0.5 * (cW - 224))
+    
+    # Crop the full image to be INPUT_LARGEST_SIZE on both width and height:
+    image_full = image_full.crop((w1-1, h1-1, w1+224-1, h1+224-1))
+    
+    # Rescale to the range 0-1, and convert to floating point:
+    image_full = np.float32(image_full) / 255
+    image_body = np.float32(image_body) / 255
+    
+    return image_full, image_body
+
+
+###########################################################################################################
+### Preprocess image.
+def preprocess_onepath(image, body_bbox, opts):
+    pass
 
 
 

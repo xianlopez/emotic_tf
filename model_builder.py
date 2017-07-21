@@ -12,7 +12,7 @@ import cnn_emotic_1
 def build_model(opts):
     
     if opts.modelname == 'cnn_emotic_1':
-        cnn_builder = cnn_emotic_1.cnn_builder_class(opts.cnn_opts[opts.modelname], opts.batch_size)
+        cnn_builder = cnn_emotic_1.cnn_builder_class(opts.cnn_opts[opts.modelname], opts)
         
     else:
         tools.error('modelname not recognized.')
@@ -29,6 +29,10 @@ def build_model(opts):
         cnn_builder.define_loss_onlydisc()
     elif opts.loss_type == 'simple1':
         cnn_builder.define_loss_simple1()
+    elif opts.loss_type == 'fullpath':
+        cnn_builder.define_loss_fullpath()
+    elif opts.loss_type == 'bodypath':
+        cnn_builder.define_loss_bodypath()
     else:
         tools.error('Loss type not recognized.')
     

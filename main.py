@@ -31,9 +31,9 @@ tf_config = tf.ConfigProto()
 tf_config.gpu_options.per_process_gpu_memory_fraction = opts.memory_limit
     
 # Load annotations:
-annotations_train = tools.load_annotations('train')
-annotations_val = tools.load_annotations('val')
-annotations_test = tools.load_annotations('test')
+annotations_train = tools.load_annotations('train', opts)
+annotations_val = tools.load_annotations('val', opts)
+annotations_test = tools.load_annotations('test', opts)
 
 # Create data loaders:
 data_train = data_loader(annotations_train, opts)
@@ -69,6 +69,12 @@ with tf.Session(config=tf_config) as sess:
     # Do evaluation:
     if opts.evaluate_model:
         cnn_actions.evaluate_model(sess, opts, data_train, data_val, data_test)
+    
+# Final time:
+end = time.time()
+logging.info('')
+logging.info('-----------------------------------')
+logging.info('Elapsed time: ' + str(end - start))
 
 logging.info('Process finished')
 

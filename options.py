@@ -12,9 +12,9 @@ opts = general_options_class()
 opts.normalize = 2
 opts.shuffle = 1
 
-opts.batch_size = 64
+opts.batch_size = 2
 
-opts.supress_random = 0
+opts.supress_random = 1
 
 opts.nsteps = 4000
 opts.nsteps_print_batch_id = 10
@@ -23,8 +23,8 @@ opts.nsteps_valloss = 200
 opts.nsteps_save = 2000
 opts.initial_learning_rate = 1e-6
 
-opts.train = 1
-opts.evaluate_model = 0
+opts.train = 0
+opts.evaluate_model = 1
 
 opts.evaluate_initial = 0
 opts.save_initial = 0
@@ -34,6 +34,9 @@ opts.nsteps_debug = 50
 
 opts.loss_type = 'orig'
 opts.optimizer = 'momentum'
+
+opts.xavier_init = 1
+opts.load_from_png = 0
 
 opts.restore_model = 0
 opts.checkpoint = 'last'

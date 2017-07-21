@@ -3,7 +3,7 @@
 import tensorflow as tf
 import collections
 import numpy as np
-from params import NDIM_DISC, NDIM_CONT, BN_EPS, STD_VAR_INI
+from params import NDIM_DISC, NDIM_CONT, BN_EPS, STD_VAR_INI, NCAT_PLACES, NCAT_IMAGENET
 import tools
 
 
@@ -15,10 +15,10 @@ def weight_variable(shape, name):
 
 
 ###########################################################################################################
-### ********
+### Xavier uniform initialization
 def weight_variable_xavier(shape, dimin, dimout, name):
-#     initial = tf.truncated_normal(shape, stddev = np.sqrt(3.0 / (dimin + dimout)))
-    initial = tf.random_uniform(shape, minval = -np.sqrt(6.0 / (dimin + dimout)), maxval = np.sqrt(6.0 / (dimin + dimout)))
+    semilength = np.sqrt(2.0 / (dimin + dimout)) * np.sqrt(3)
+    initial = tf.random_uniform(shape, minval = -semilength, maxval = semilength)
     return tf.Variable(initial, name=name)
 
 
@@ -64,30 +64,6 @@ def add_block_v2(x_in, var_dict, strideW, strideH, padW, padH, path_id, block_id
     bn = tf.nn.batch_normalization(relu2, var_dict.items()[4][1], var_dict.items()[5][1], \
         var_dict.items()[6][1], var_dict.items()[7][1], BN_EPS, name=basename+'bn')
     return bn
-
-
-###########################################################################################################
-### Create random variables for one block of the form conv + relu + conv + bn + relu
-def random_variables_block(dim_in, dim_mid, dim_out, kernelW, kernelH, var_dict, path_id, block_id):
-    # Base name, including path id and block id:
-    basename = 'p' + str(path_id) + '_b' + str(block_id) + '_'
-    # Create variables and add them to dictionary:
-#     var_dict[basename + 'conv1_W'] = weight_variable([kernelW, kernelH, dim_in, dim_mid], name=basename+'conv1_W')
-#     var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
-#     var_dict[basename + 'conv2_W'] = weight_variable([kernelH, kernelW, dim_mid, dim_out], name=basename+'conv2_W')
-#     var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
-#     var_dict[basename + 'bn_mean'] = weight_variable([dim_out], name=basename+'bn_mean')
-#     var_dict[basename + 'bn_variance'] = weight_variable([dim_out], name=basename+'bn_variance')
-#     var_dict[basename + 'bn_offset'] = weight_variable([dim_out], name=basename+'bn_offset')
-#     var_dict[basename + 'bn_scale'] = weight_variable([dim_out], name=basename+'bn_scale')
-    var_dict[basename + 'conv1_W'] = weight_variable_xavier([kernelW, kernelH, dim_in, dim_mid], dim_in*kernelW*kernelH, dim_mid*kernelW*kernelH, name=basename+'conv1_W')
-    var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
-    var_dict[basename + 'conv2_W'] = weight_variable_xavier([kernelH, kernelW, dim_mid, dim_out], dim_mid*kernelW*kernelH, dim_out*kernelW*kernelH, name=basename+'conv2_W')
-    var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
-    var_dict[basename + 'bn_mean'] = bias_variable([dim_out], name=basename+'bn_mean')
-    var_dict[basename + 'bn_variance'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_variance')
-    var_dict[basename + 'bn_offset'] = bias_variable([dim_out], name=basename+'bn_offset')
-    var_dict[basename + 'bn_scale'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_scale')
 
 
 ###########################################################################################################
@@ -255,17 +231,62 @@ class cnn_builder_class:
     correct_avgpool = False
     batch_size = 0
     ldisc_c = 1.2 / 10
+    xavier_init = False
 
 
     ########################################################################################
     #### Load random weights for the full path:
-    def __init__(self, cnn_opts, batch_size):
+    def __init__(self, cnn_opts, opts):
         self.load_torch = cnn_opts.load_torch
         self.dirmodel = cnn_opts.dirmodel
         self.correct_block2 = cnn_opts.correct_block2
         self.correct_avgpool = cnn_opts.correct_avgpool
         self.ldisc_c = cnn_opts.ldisc_c
-        self.batch_size = batch_size
+        self.batch_size = opts.batch_size
+        self.xavier_init = opts.xavier_init
+
+
+    ###########################################################################################################
+    ### Initialize variables of a batch normalization layer:
+    def bn_variables(self, size, basename):
+        # We initialize these variable in a fashion such that this layer will be the identity transformation (no effect).
+        initial_zeros = tf.zeros((size))
+        initial_ones = tf.ones((size))
+        bn_mean = tf.Variable(initial_zeros, name=basename+'bn_mean')
+        bn_variance = tf.Variable(initial_ones, name=basename+'bn_variance')
+        bn_offset = tf.Variable(initial_zeros, name=basename+'bn_offset')
+        bn_scale = tf.Variable(initial_ones, name=basename+'bn_scale')
+        return bn_mean, bn_variance, bn_offset, bn_scale
+
+
+    ###########################################################################################################
+    ### Create random variables for one block of the form conv + relu + conv + bn + relu
+    def random_variables_block(self, dim_in, dim_mid, dim_out, kernelW, kernelH, var_dict, path_id, block_id):
+        # Base name, including path id and block id:
+        basename = 'p' + str(path_id) + '_b' + str(block_id) + '_'
+        # Create variables and add them to dictionary:
+        if self.xavier_init:
+            var_dict[basename + 'conv1_W'] = weight_variable_xavier([kernelW, kernelH, dim_in, dim_mid], dim_in*kernelW*kernelH, dim_mid*kernelW*kernelH, name=basename+'conv1_W')
+            var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
+            var_dict[basename + 'conv2_W'] = weight_variable_xavier([kernelH, kernelW, dim_mid, dim_out], dim_mid*kernelW*kernelH, dim_out*kernelW*kernelH, name=basename+'conv2_W')
+            var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
+#             var_dict[basename + 'bn_mean'] = bias_variable([dim_out], name=basename+'bn_mean')
+#             var_dict[basename + 'bn_variance'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_variance')
+#             var_dict[basename + 'bn_offset'] = bias_variable([dim_out], name=basename+'bn_offset')
+#             var_dict[basename + 'bn_scale'] = weight_variable_xavier([dim_out], dim_out, dim_out, name=basename+'bn_scale')
+        else:
+            var_dict[basename + 'conv1_W'] = weight_variable([kernelW, kernelH, dim_in, dim_mid], name=basename+'conv1_W')
+            var_dict[basename + 'conv1_b'] = bias_variable([dim_mid], name=basename+'conv1_b')
+            var_dict[basename + 'conv2_W'] = weight_variable([kernelH, kernelW, dim_mid, dim_out], name=basename+'conv2_W')
+            var_dict[basename + 'conv2_b'] = bias_variable([dim_out], name=basename+'conv2_b')
+#             var_dict[basename + 'bn_mean'] = weight_variable([dim_out], name=basename+'bn_mean')
+#             var_dict[basename + 'bn_variance'] = weight_variable([dim_out], name=basename+'bn_variance')
+#             var_dict[basename + 'bn_offset'] = weight_variable([dim_out], name=basename+'bn_offset')
+#             var_dict[basename + 'bn_scale'] = weight_variable([dim_out], name=basename+'bn_scale')
+        var_dict[basename + 'bn_mean'], \
+            var_dict[basename + 'bn_variance'], \
+            var_dict[basename + 'bn_offset'], \
+            var_dict[basename + 'bn_scale'] = self.bn_variables(dim_out, basename=basename)
 
 
     ########################################################################################
@@ -274,21 +295,21 @@ class cnn_builder_class:
         # Initialize dictionary:
         var_dict = collections.OrderedDict()
         # block 1
-        random_variables_block(3, 32, 64, 1, 11, var_dict, 1, 1)
+        self.random_variables_block(3, 32, 64, 1, 11, var_dict, 1, 1)
         # block 2
-        random_variables_block(64, 128, 256, 1, 5, var_dict, 1, 2)
+        self.random_variables_block(64, 128, 256, 1, 5, var_dict, 1, 2)
         # block 3
-        random_variables_block(256, 384, 512, 1, 3, var_dict, 1, 3)
+        self.random_variables_block(256, 384, 512, 1, 3, var_dict, 1, 3)
         # block 4
-        random_variables_block(512, 384, 384, 1, 3, var_dict, 1, 4)
+        self.random_variables_block(512, 384, 384, 1, 3, var_dict, 1, 4)
         # block 5
-        random_variables_block(384, 640, 640, 1, 3, var_dict, 1, 5)
+        self.random_variables_block(384, 640, 640, 1, 3, var_dict, 1, 5)
         # block 6
-        random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 6)
+        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 6)
         # block 7
-        random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 7)
+        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 7)
         # block 8
-        random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 8)
+        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 8)
         return var_dict
 
 
@@ -324,11 +345,11 @@ class cnn_builder_class:
         # Initialize dictionary:
         var_dict = collections.OrderedDict()
         # block 1
-        random_variables_block(3, 32, 64, 1, 3, var_dict, 2, 1)
+        self.random_variables_block(3, 32, 64, 1, 3, var_dict, 2, 1)
         # block 2
-        random_variables_block(64, 128, 128, 1, 3, var_dict, 2, 2)
+        self.random_variables_block(64, 128, 128, 1, 3, var_dict, 2, 2)
         # block 3
-        random_variables_block(128, 128, 128, 1, 3, var_dict, 2, 3)
+        self.random_variables_block(128, 128, 128, 1, 3, var_dict, 2, 3)
         return var_dict
 
 
@@ -451,18 +472,24 @@ class cnn_builder_class:
                 read_weights_bn(dirbase+'l2_bn.txt', varname='pj_bn')
             
         else:
-#             pj_dense_weight = weight_variable([768, 256], name='pj_dense_weight')
-#             pj_dense_bias = bias_variable([256], name='pj_dense_bias')
-#             pj_bn_mean = weight_variable([256], name='pj_bn_mean')
-#             pj_bn_variance = weight_variable([256], name='pj_bn_variance')
-#             pj_bn_offset = weight_variable([256], name='pj_bn_offset')
-#             pj_bn_scale = weight_variable([256], name='pj_bn_scale')
-            pj_dense_weight = weight_variable_xavier([768, 256], 768, 256, name='pj_dense_weight')
-            pj_dense_bias = bias_variable([256], name='pj_dense_bias')
-            pj_bn_mean = bias_variable([256], name='pj_bn_mean')
-            pj_bn_variance = weight_variable_xavier([256], 256, 256, name='pj_bn_variance')
-            pj_bn_offset = bias_variable([256], name='pj_bn_offset')
-            pj_bn_scale = weight_variable_xavier([256], 256, 256, name='pj_bn_scale')
+            if self.xavier_init:
+                pj_dense_weight = weight_variable_xavier([768, 256], 768, 256, name='pj_dense_weight')
+                pj_dense_bias = bias_variable([256], name='pj_dense_bias')
+#                 pj_bn_mean = bias_variable([256], name='pj_bn_mean')
+#                 pj_bn_variance = weight_variable_xavier([256], 256, 256, name='pj_bn_variance')
+#                 pj_bn_offset = bias_variable([256], name='pj_bn_offset')
+#                 pj_bn_scale = weight_variable_xavier([256], 256, 256, name='pj_bn_scale')
+            else:
+                pj_dense_weight = weight_variable([768, 256], name='pj_dense_weight')
+                pj_dense_bias = bias_variable([256], name='pj_dense_bias')
+#                 pj_bn_mean = weight_variable([256], name='pj_bn_mean')
+#                 pj_bn_variance = weight_variable([256], name='pj_bn_variance')
+#                 pj_bn_offset = weight_variable([256], name='pj_bn_offset')
+#                 pj_bn_scale = weight_variable([256], name='pj_bn_scale')
+            pj_bn_mean, \
+                pj_bn_variance, \
+                pj_bn_offset, \
+                pj_bn_scale = self.bn_variables(256, basename='pj_bn_scale')
         
         # Probability of keeping units in the dropout layer:
         keep_prob = tf.placeholder(tf.float32, name='keep_prob')
@@ -490,22 +517,68 @@ class cnn_builder_class:
             [yd_weight, yd_bias] = read_weights_dense(dirbase+'l7_dense.txt', varname='yd')
             
         else:
-#             yc_weight = weight_variable([256, NDIM_CONT], name='yc_weight')
-#             yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
-#             yd_weight = weight_variable([256, NDIM_DISC], name='yd_weight')
-#             yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
-            yc_weight = weight_variable_xavier([256, NDIM_CONT], 256, NDIM_CONT, name='yc_weight')
-            yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
-            yd_weight = weight_variable_xavier([256, NDIM_DISC], 256, NDIM_DISC, name='yd_weight')
-            yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
+            if self.xavier_init:
+                yc_weight = weight_variable_xavier([256, NDIM_CONT], 256, NDIM_CONT, name='yc_weight')
+                yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
+                yd_weight = weight_variable_xavier([256, NDIM_DISC], 256, NDIM_DISC, name='yd_weight')
+                yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
+            else:
+                yc_weight = weight_variable([256, NDIM_CONT], name='yc_weight')
+                yc_bias = bias_variable([NDIM_CONT], name='yc_bias')
+                yd_weight = weight_variable([256, NDIM_DISC], name='yd_weight')
+                yd_bias = bias_variable([NDIM_DISC], name='yd_bias')
 
         # Model
-#         yc = tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias, name='yc')
-#         yd = tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias, name='yd')
-        yc = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias), name='yc')
-        yd = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias), name='yd')
+        yc = tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias, name='yc')
+        yd = tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias, name='yd')
+#         yc = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yc_weight), yc_bias), name='yc')
+#         yd = tf.sigmoid(tf.add(tf.matmul(pj_dropout, yd_weight), yd_bias), name='yd')
 
         return yc, yd
+
+
+    ########################################################################################
+    #### Define the predictions for the full image network:
+    def predictions_full(self, full_path_end):
+        
+        if self.xavier_init:
+            pred_dense1_weight = weight_variable_xavier([640, 256], 640, 256, name='pred_dense1_weight')
+            pred_dense1_bias = bias_variable([256], name='pred_dense1_bias')
+            pred_dense2_weight = weight_variable_xavier([256, NCAT_PLACES], 256, NCAT_PLACES, name='pred_dense2_weight')
+            pred_dense2_bias = bias_variable([NCAT_PLACES], name='pred_dense2_bias')
+        else:
+            pred_dense1_weight = weight_variable([640, 256], name='pred_dense1_weight')
+            pred_dense1_bias = bias_variable([256], name='pred_dense1_bias')
+            pred_dense2_weight = weight_variable([256, NCAT_PLACES], name='pred_dense2_weight')
+            pred_dense2_bias = bias_variable([NCAT_PLACES], name='pred_dense2_bias')
+
+        # Model
+        pred_dense1 = tf.add(tf.matmul(full_path_end, pred_dense1_weight), pred_dense1_bias, name='pred_dense1')
+        y = tf.add(tf.matmul(pred_dense1, pred_dense2_weight), pred_dense2_bias, name='y')
+        
+        return y
+
+
+    ########################################################################################
+    #### Define the predictions for the body image network:
+    def predictions_body(self, body_path_end):
+        
+        if self.xavier_init:
+            pred_dense1_weight = weight_variable_xavier([128, 256], 128, 256, name='pred_dense1_weight')
+            pred_dense1_bias = bias_variable([256], name='pred_dense1_bias')
+            pred_dense2_weight = weight_variable_xavier([256, NCAT_IMAGENET], 256, NCAT_IMAGENET, name='pred_dense2_weight')
+            pred_dense2_bias = bias_variable([NCAT_IMAGENET], name='pred_dense2_bias')
+        else:
+            pred_dense1_weight = weight_variable([640, 256], name='pred_dense1_weight')
+            pred_dense1_bias = bias_variable([256], name='pred_dense1_bias')
+            pred_dense2_weight = weight_variable([256, NCAT_IMAGENET], name='pred_dense2_weight')
+            pred_dense2_bias = bias_variable([NCAT_IMAGENET], name='pred_dense2_bias')
+
+        # Model
+        pred_dense1 = tf.add(tf.matmul(body_path_end, pred_dense1_weight), pred_dense1_bias, name='pred_dense1')
+        y = tf.add(tf.matmul(pred_dense1, pred_dense2_weight), pred_dense2_bias, name='y')
+        
+        return y
 
 
     ########################################################################################
@@ -526,6 +599,40 @@ class cnn_builder_class:
             'yd'       : yd,
             'x_f'      : graph.get_tensor_by_name('x_f:0'),
             'x_b'      : graph.get_tensor_by_name('x_b:0'),
+            'keep_prob': graph.get_tensor_by_name('keep_prob:0')
+        }
+        return cnn_dict
+
+
+    ########################################################################################
+    #### Define network only with the full image path:
+    def define_fullpath(self):
+        # Full image path:
+        full_path_end = self.full_path()
+        # Predictions paths:
+        y = self.predictions_full(full_path_end)
+        # Create a dictionary with all the input and output variables:
+        graph = tf.get_default_graph()
+        cnn_dict = {
+            'y'        : y,
+            'x'        : graph.get_tensor_by_name('x:0'),
+            'keep_prob': graph.get_tensor_by_name('keep_prob:0')
+        }
+        return cnn_dict
+
+
+    ########################################################################################    ########################################################################################
+    #### Define network only with the body image path:
+    def define_bodypath(self):
+        # Body image path:
+        body_path_end = self.body_path()
+        # Predictions paths:
+        y = self.predictions_body(body_path_end)
+        # Create a dictionary with all the input and output variables:
+        graph = tf.get_default_graph()
+        cnn_dict = {
+            'y'        : y,
+            'x'        : graph.get_tensor_by_name('x:0'),
             'keep_prob': graph.get_tensor_by_name('keep_prob:0')
         }
         return cnn_dict
@@ -723,6 +830,18 @@ class cnn_builder_class:
             'loss_cont_saturation': loss_cont_saturation
         }
         return loss_dict
+
+
+    ########################################################################################
+    #### Define loss when the network hast only the full image path:
+    def define_loss_fullpath(self):
+        pass
+
+
+    ########################################################################################
+    #### Define loss when the network hast only the body image path:
+    def define_loss_bodypath(self):
+        pass
 
 
     ########################################################################################

@@ -3,3 +3,7 @@ experiments
 *.pyc
 .project
 .pydevproject
+annotations_txt.txt
+train_annotations.txt
+val_annotations.txt
+test_annotations.txt

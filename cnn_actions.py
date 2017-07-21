@@ -20,19 +20,8 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     # Model name with path:
     modelname = dircase + '/model'
     
-    # Get all the parameters and variables of the network and its loss:
+    # Get model's graph:
     graph = tf.get_default_graph()
-    x_f                  = graph.get_tensor_by_name('x_f:0')
-    x_b                  = graph.get_tensor_by_name('x_b:0')
-    keep_prob            = graph.get_tensor_by_name('keep_prob:0')
-    L_comb               = graph.get_tensor_by_name('L_comb:0')
-    y_true_cont          = graph.get_tensor_by_name('y_true_cont:0')
-    y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
-    w_cont               = graph.get_tensor_by_name('w_cont:0')
-    w_disc               = graph.get_tensor_by_name('w_disc:0')
-    loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
-    loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
-    train_step           = graph.get_operation_by_name('apply_grads_adam')
     
     # Lists for train and validations losses:
     train_loss_list = []
@@ -67,29 +56,10 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
             logging.info('batch %i / %i' % (i+1, opts.nsteps))
         
         # Load batch:
-        im_full_prep_batch, im_body_prep_batch, true_labels_cont, true_labels_disc = data_train.load_batch_with_labels()
+        inputs, labels = data_train.load_batch_with_labels(opts)
         
         # Take a training step:
-        _, grads_and_vars, curr_loss = \
-            sess.run([train_step, gradients, L_comb], feed_dict={x_f: im_full_prep_batch,
-                x_b: im_body_prep_batch,
-                keep_prob: opts.keep_prob_train,
-                y_true_cont: true_labels_cont,
-                y_true_disc: true_labels_disc,
-                w_cont: 1,
-                w_disc: 1./6.,
-                loss_cont_margin: 0,
-                loss_cont_saturation: 1500})
-        
-        # Look for NaNs on variables and gradients:
-        if opts.debug and batch_id % opts.nsteps_debug == 0:
-            count = -1
-            for gv in grads_and_vars:
-                count = count + 1
-                if np.any(np.isnan(gv[0])):
-                    tools.error('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
-                if np.any(np.isnan(gv[1])):
-                    tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
+        curr_loss = take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id)
         
         # Report loss on current batch:
         if batch_id % opts.nsteps_print_batch_id == 0:
@@ -164,6 +134,22 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
 ###########################################################################################################
 ### Compute metrics and loss on a dataset.
 def evaluate_on_dataset(sess, graph, data_loader, opts):
+    if opts.net_arch == 'orig':
+        loss, ap, mean_error, mean_ap = evaluate_on_dataset_orig(sess, graph, data_loader, opts)
+        
+    elif opts.net_arch == 'onlyfull' or opts.net_arch == 'onlybody':
+        loss, ap, mean_ap = evaluate_on_dataset_onepath(sess, graph, data_loader, opts)
+        mean_error = 0
+        
+    else:
+        tools.error('Network architecture not recognized.')
+    
+    return loss, ap, mean_error, mean_ap
+
+
+###########################################################################################################
+### Compute metrics and loss on a dataset.
+def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
     
     yc                   = graph.get_tensor_by_name('yc:0')
     yd                   = graph.get_tensor_by_name('yd:0')
@@ -195,11 +181,16 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
             print('%i%%...' % progress),
             sys.stdout.flush()
         # Load batch:
-        im_full_batch, im_body_batch, true_labels_cont, true_labels_disc = \
-            data_loader.load_batch_with_labels()
+        inputs, labels = data_loader.load_batch_with_labels(opts)
+        # Unroll inputs and labels:
+        im_full_batch = inputs['im_full_prep_batch']
+        im_body_batch = inputs['im_body_prep_batch']
+        true_labels_cont = labels['true_labels_cont']
+        true_labels_disc = labels['true_labels_disc']
         # Run network:
-        y_cont_pred, y_disc_pred, curr_loss = sess.run([yc, yd, L_comb], feed_dict={x_f: im_full_batch, 
-            x_b: im_body_batch, 
+        y_cont_pred, y_disc_pred, curr_loss = sess.run([yc, yd, L_comb], feed_dict={
+            x_f: im_full_batch,
+            x_b: im_body_batch,
             keep_prob: 1,
             y_true_cont: true_labels_cont,
             y_true_disc: true_labels_disc,
@@ -223,6 +214,56 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
     mean_ap = np.mean(ap)
     
     return loss, ap, mean_error, mean_ap
+
+
+###########################################################################################################
+### Compute metrics and loss on a dataset.
+def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
+    
+    y                    = graph.get_tensor_by_name('y:0')
+    x                    = graph.get_tensor_by_name('x:0')
+    keep_prob            = graph.get_tensor_by_name('keep_prob:0')
+    L_comb               = graph.get_tensor_by_name('L_comb:0')
+    y_true               = graph.get_tensor_by_name('y_true:0')
+    
+    loss = 0
+    y_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
+    y_true_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
+    
+    progress = 0
+    progress_step = 10
+    print('0%...'),
+    sys.stdout.flush()
+    for batch_id in range(data_loader.n_batches_per_epoch):
+        # Progress display:
+        while progress + progress_step < np.float32(batch_id) / data_loader.n_batches_per_epoch * 100:
+            progress = progress + progress_step
+            print('%i%%...' % progress),
+            sys.stdout.flush()
+        # Load batch:
+        inputs, labels = data_loader.load_batch_with_labels(opts)
+        # Unroll inputs and labels:
+        im_batch = inputs[0]
+        true_labels = labels[1]
+        # Run network:
+        y_pred, curr_loss = sess.run([y, L_comb], feed_dict={
+            x: im_batch,
+            keep_prob: 1,
+            y_true: true_labels})
+        # Accumulate loss:
+        loss = loss + curr_loss
+        # Concatenate predictions:
+        y_pred_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = y_pred
+        y_true_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = true_labels
+    print('100%')
+    
+    # Loss:
+    loss = loss / data_loader.n_batches_per_epoch
+    # Metrics:
+    ap = metrics_from_predictions_onepath(y_pred_concat, y_true_concat)
+    mean_ap = np.mean(ap)
+    
+    return loss, ap, mean_ap
 
 
 ###########################################################################################################
@@ -288,6 +329,15 @@ def metrics_from_predictions(y_cont_pred, y_disc_pred, y_cont_true, y_disc_true)
 
 
 ###########################################################################################################
+### Compute metrics on the one-path networks.
+def metrics_from_predictions_onepath(y_pred, y_true):
+    
+    ap = 0
+    
+    return ap
+
+
+###########################################################################################################
 ### Evaluate a given model in all datasets
 def evaluate_model(sess, opts, data_train, data_val, data_test):
     
@@ -329,5 +379,62 @@ def evaluate_model(sess, opts, data_train, data_val, data_test):
     logging.info('Test AP:')
     for cat_idx in range(NDIM_DISC):
         logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_test[category_paper_order[cat_idx] - 1] * 100))
+
+
+###########################################################################################################
+### Take a training step
+def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
+    if opts.net_arch == 'orig':
+        # Get variables from graph:
+        x_f                  = graph.get_tensor_by_name('x_f:0')
+        x_b                  = graph.get_tensor_by_name('x_b:0')
+        keep_prob            = graph.get_tensor_by_name('keep_prob:0')
+        L_comb               = graph.get_tensor_by_name('L_comb:0')
+        y_true_cont          = graph.get_tensor_by_name('y_true_cont:0')
+        y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
+        w_cont               = graph.get_tensor_by_name('w_cont:0')
+        w_disc               = graph.get_tensor_by_name('w_disc:0')
+        loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
+        loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
+        train_step           = graph.get_operation_by_name('apply_grads_adam')
+        
+        # Unroll predictions and labels:
+        im_full_prep_batch = inputs['im_full_prep_batch']
+        im_body_prep_batch = inputs['im_body_prep_batch']
+        true_labels_cont = labels['true_labels_cont']
+        true_labels_disc = labels['true_labels_disc']
+        
+        # Take training step:
+        _, grads_and_vars, curr_loss = \
+            sess.run([train_step, gradients, L_comb], feed_dict={
+                x_f: im_full_prep_batch,
+                x_b: im_body_prep_batch,
+                keep_prob: opts.keep_prob_train,
+                y_true_cont: true_labels_cont,
+                y_true_disc: true_labels_disc,
+                w_cont: 1,
+                w_disc: 1./6.,
+                loss_cont_margin: 0,
+                loss_cont_saturation: 1500})
+        
+        # Look for NaNs on variables and gradients:
+        if opts.debug and batch_id % opts.nsteps_debug == 0:
+            count = -1
+            for gv in grads_and_vars:
+                count = count + 1
+                if np.any(np.isnan(gv[0])):
+                    tools.error('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
+                if np.any(np.isnan(gv[1])):
+                    tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
+        
+    elif opts.net_arch == 'onlyfull':
+        pass
+        
+    elif opts.net_arch == 'onlybody':
+        pass
+        
+    else:
+        tools.error('Network architecture not recognized.')
     
+    return curr_loss
 
