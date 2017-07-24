@@ -4,7 +4,8 @@
 
 import numpy as np
 import tools
-from params import NDIM_DISC, NDIM_CONT
+from params import NDIM_DISC, NDIM_CONT, NCAT_IMAGENET, NCAT_PLACES
+
 
 
 class data_loader:
@@ -187,6 +188,7 @@ class data_loader:
                 tools.error('Image index over number of images per epoch')
             
             # Load images (full and body):
+#             print(self.annotations[self.indexes[im_idx]])
             im_full, im_body = tools.load_images(self.annotations[self.indexes[im_idx]], opts)
 
             # Add one dimension (for batch)
@@ -198,6 +200,7 @@ class data_loader:
             for cat_idx in range(NDIM_DISC):
                 if tools.category_in_annotation(self.annotations[self.indexes[im_idx]], cat_idx):
                     true_labels_disc[idx_in_batch, cat_idx] = 1
+#                     true_labels_disc[idx_in_batch, cat_idx] = 10
             # Continuous:
             for var_idx in range(NDIM_CONT):
                 true_labels_cont[idx_in_batch, var_idx] = np.float32(self.annotations[self.indexes[im_idx]][6 + var_idx]) / 10
@@ -220,6 +223,81 @@ class data_loader:
         labels = {
             'true_labels_cont': true_labels_cont,
             'true_labels_disc': true_labels_disc}
+        
+        return inputs, labels
+
+
+class data_loader_imagenet:
+    curr_batch = 0
+    indexes = []
+    nimages = 0
+    n_batches_per_epoch = 0
+    n_images_per_epoch = 0
+    annotations = []
+    
+    def __init__(self, annotations, opts):
+        self.annotations = annotations
+        self.nimages = len(self.annotations)
+        self.n_batches_per_epoch = np.int32(np.ceil(np.float32(self.nimages) / np.float32(opts.batch_size)))
+        self.n_images_per_epoch = opts.batch_size * self.n_batches_per_epoch
+        # Build the array with the indexes of all images of one epoch:
+        self.prepare_epoch(opts)
+    
+    
+    def prepare_epoch(self, opts):
+        # Shuflle indexes
+        if opts.shuffle:
+            self.indexes = np.random.choice(range(self.nimages), self.nimages, replace=False)
+        else:
+            self.indexes = range(self.nimages)
+        # If the number of images is not a multiple of the number of batches, then we add random images to
+        # the last batch:
+        empty_slots = self.n_images_per_epoch - self.nimages
+        if empty_slots > 0:
+            if opts.shuffle:
+                self.indexes = np.concatenate((self.indexes, np.random.choice(range(self.nimages), empty_slots, replace=False)))
+            else:
+                self.indexes = np.concatenate((self.indexes, range(self.nimages)[0:empty_slots]))
+    
+    
+    def load_batch_with_labels(self, opts):
+        # Initialize arrays:
+        im_prep_batch = np.zeros([opts.batch_size, 128, 128, 3], dtype=np.float32)
+        true_labels = np.zeros((opts.batch_size, NDIM_DISC), dtype=np.float32)
+        
+        # Fill the batches:
+        for idx_in_batch in range(opts.batch_size):
+            # Corresponding image index:
+            im_idx = self.curr_batch * opts.batch_size + idx_in_batch
+            
+            if im_idx >= self.n_images_per_epoch:
+                tools.error('Image index over number of images per epoch')
+            
+            # Load images (full and body):
+            im_full = tools.load_images_onepath(self.annotations[self.indexes[im_idx]], opts)
+
+            # Add one dimension (for batch)
+            im_prep_batch[idx_in_batch, :, :, :] = im_full
+
+            # Build the batch with the true labels:            
+            # Discrete:
+            for cat_idx in range(NCAT_IMAGENET):
+                if tools.category_in_annotation(self.annotations[self.indexes[im_idx]], cat_idx):
+                    true_labels[idx_in_batch, cat_idx] = 1
+        
+        # Update batch index:
+        self.curr_batch = self.curr_batch + 1
+        
+        # If we have completed a whole epoch, prepare a new one and restart the batch index:
+        if self.curr_batch == self.n_batches_per_epoch:
+            self.curr_batch = 0
+            self.prepare_epoch(opts)
+        
+#         inputs = [im_full_prep_batch, im_body_prep_batch]
+#         labels = [true_labels_cont, true_labels_disc]
+
+        inputs = {'im_prep_batch': im_prep_batch}
+        labels = {'true_labels': true_labels}
         
         return inputs, labels
 

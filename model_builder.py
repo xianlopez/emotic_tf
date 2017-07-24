@@ -18,15 +18,18 @@ def build_model(opts):
         tools.error('modelname not recognized.')
 
     # Define network:
-    cnn_builder.define_network()
+    if opts.net_arch == 'orig':
+        cnn_builder.define_network()
+    elif opts.net_arch == 'fullpath':
+        cnn_builder.define_fullpath()
+    elif opts.net_arch == 'bodypath':
+        cnn_builder.define_bodypath()
+    else:
+        tools.error('Network architecture not recognized.')
     
     # Define loss:
-    if opts.loss_type == 'orig':
-        cnn_builder.define_loss_orig()
-    elif opts.loss_type == 'onlycont':
-        cnn_builder.define_loss_onlycont()
-    elif opts.loss_type == 'onlydisc':
-        cnn_builder.define_loss_onlydisc()
+    if opts.loss_type == 'orig' or opts.loss_type == 'onlycont' or opts.loss_type == 'onlydisc':
+        cnn_builder.define_loss_orig(opts)
     elif opts.loss_type == 'simple1':
         cnn_builder.define_loss_simple1()
     elif opts.loss_type == 'fullpath':

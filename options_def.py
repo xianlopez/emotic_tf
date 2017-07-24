@@ -11,7 +11,6 @@ class opts_cnn_emotic_1_class:
         self.dirmodel = []
         self.correct_block2 = False
         self.correct_avgpool = False
-        self.ldisc_c = 1.2 / 10
     
 
 class general_options_class:
@@ -83,6 +82,13 @@ class general_options_class:
         self.mini_dataset = False # For debbugin. Take only a fraction of the original datasets, to speed up computations.
         self.mini_percent = 5 # Percentage to take when mini_dataset option is set to True.
         
+        # Loss options:
+        self.w_cont = 1
+        self.w_disc = 1./6.
+        self.loss_cont_margin = 0.1
+        self.loss_cont_saturation = 150
+        self.ldisc_c = 1.2
+        self.reweight = 'onbatch' # 'onbatch': weights computed with each batch; 'allones': all the weights are ones; 'ondataset': weights computed at the beginning with the whole dataset.
         
         
         

@@ -19,6 +19,10 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     
     # Model name with path:
     modelname = dircase + '/model'
+        
+    # Get discrete weights, when they are computed with the whole dataset, or just ones:
+    if opts.reweight != 'onbatch':
+        ldisc_weights_train = get_discrete_weights_no_reweight(data_train, opts)
     
     # Get model's graph:
     graph = tf.get_default_graph()
@@ -58,8 +62,13 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
         # Load batch:
         inputs, labels = data_train.load_batch_with_labels(opts)
         
+        # Get discrete weights, if we have to reweight on each batch:
+        if opts.reweight == 'onbatch':
+            ldisc_weights_train = get_discrete_weights_from_data(labels['true_labels_disc'], opts.ldisc_c)
+        
         # Take a training step:
-        curr_loss = take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id)
+        curr_loss = take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id, ldisc_weights_train)
+        print('train batch loss: ' + str(curr_loss))
         
         # Report loss on current batch:
         if batch_id % opts.nsteps_print_batch_id == 0:
@@ -159,16 +168,17 @@ def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
     L_comb               = graph.get_tensor_by_name('L_comb:0')
     y_true_cont          = graph.get_tensor_by_name('y_true_cont:0')
     y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
-    w_cont               = graph.get_tensor_by_name('w_cont:0')
-    w_disc               = graph.get_tensor_by_name('w_disc:0')
-    loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
-    loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
+    ldisc_weights        = graph.get_tensor_by_name('ldisc_weights:0')
+        
+    # Get discrete weights, when they are computed with the whole dataset, or just ones:
+    if opts.reweight != 'onbatch':
+        ldisc_weights_data = get_discrete_weights_no_reweight(data_loader, opts)
     
     loss = 0
-    y_cont_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_CONT), dtype=np.float32)
-    y_disc_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
-    y_cont_true_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_CONT), dtype=np.float32)
-    y_disc_true_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
+    y_cont_pred_concat = np.zeros((data_loader.nimages, NDIM_CONT), dtype=np.float32)
+    y_disc_pred_concat = np.zeros((data_loader.nimages, NDIM_DISC), dtype=np.float32)
+    y_cont_true_concat = np.zeros((data_loader.nimages, NDIM_CONT), dtype=np.float32)
+    y_disc_true_concat = np.zeros((data_loader.nimages, NDIM_DISC), dtype=np.float32)
     
     progress = 0
     progress_step = 10
@@ -182,6 +192,9 @@ def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
             sys.stdout.flush()
         # Load batch:
         inputs, labels = data_loader.load_batch_with_labels(opts)
+        # Get discrete weights, if we have to reweight on each batch:
+        if opts.reweight == 'onbatch':
+            ldisc_weights_data = get_discrete_weights_from_data(labels['true_labels_disc'], opts.ldisc_c)
         # Unroll inputs and labels:
         im_full_batch = inputs['im_full_prep_batch']
         im_body_batch = inputs['im_body_prep_batch']
@@ -194,19 +207,21 @@ def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
             keep_prob: 1,
             y_true_cont: true_labels_cont,
             y_true_disc: true_labels_disc,
-            w_cont: 1,
-            w_disc: 1./6.,
-            loss_cont_margin: 0,
-            loss_cont_saturation: 1500})
+            ldisc_weights: ldisc_weights_data})
         # Accumulate loss:
         loss = loss + curr_loss
+#         print('curr_loss = ' + str(curr_loss))
+#         print(y_cont_pred)
+#         print(true_labels_cont)
         # Concatenate predictions:
-        y_cont_pred_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = y_cont_pred
-        y_disc_pred_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = y_disc_pred
-        y_cont_true_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = true_labels_cont
-        y_disc_true_concat[batch_id*opts.batch_size:(batch_id+1)*opts.batch_size, :] = true_labels_disc
+        lim_up = np.min([(batch_id+1)*opts.batch_size, data_loader.nimages])
+        lim_batch = opts.batch_size - np.max([(batch_id+1)*opts.batch_size - data_loader.nimages, 0])
+        y_cont_pred_concat[batch_id*opts.batch_size:lim_up, :] = y_cont_pred[0:lim_batch, :]
+        y_disc_pred_concat[batch_id*opts.batch_size:lim_up, :] = y_disc_pred[0:lim_batch, :]
+        y_cont_true_concat[batch_id*opts.batch_size:lim_up, :] = true_labels_cont[0:lim_batch, :]
+        y_disc_true_concat[batch_id*opts.batch_size:lim_up, :] = true_labels_disc[0:lim_batch, :]
     print('100%')
-    
+    print(y_cont_pred_concat.shape)
     # Loss:
     loss = loss / data_loader.n_batches_per_epoch
     # Metrics:
@@ -221,10 +236,15 @@ def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
 def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
     
     y                    = graph.get_tensor_by_name('y:0')
-    x                    = graph.get_tensor_by_name('x:0')
     keep_prob            = graph.get_tensor_by_name('keep_prob:0')
-    L_comb               = graph.get_tensor_by_name('L_comb:0')
+    L_disc               = graph.get_tensor_by_name('L_disc:0')
     y_true               = graph.get_tensor_by_name('y_true:0')
+    if opts.net_arch == 'fullpath':
+        x = graph.get_tensor_by_name('x_f:0')
+    elif opts.net_arch == 'bodypath':
+        x = graph.get_tensor_by_name('x_b:0')
+    else:
+        tools.error('net_arch not recognized.')
     
     loss = 0
     y_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
@@ -246,7 +266,7 @@ def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
         im_batch = inputs[0]
         true_labels = labels[1]
         # Run network:
-        y_pred, curr_loss = sess.run([y, L_comb], feed_dict={
+        y_pred, curr_loss = sess.run([y, L_disc], feed_dict={
             x: im_batch,
             keep_prob: 1,
             y_true: true_labels})
@@ -355,7 +375,7 @@ def evaluate_model(sess, opts, data_train, data_val, data_test):
     logging.info('Train AP:')
     for cat_idx in range(NDIM_DISC):
         logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_train[category_paper_order[cat_idx] - 1] * 100))
-
+  
     # Loss and metrics over the validation set:
     logging.info('')
     logging.info('Evaluating on validation set...')
@@ -367,7 +387,7 @@ def evaluate_model(sess, opts, data_train, data_val, data_test):
     logging.info('Validation AP:')
     for cat_idx in range(NDIM_DISC):
         logging.info(category_names[category_paper_order[cat_idx] - 1] + ': ' + str(ap_val[category_paper_order[cat_idx] - 1] * 100))
-
+ 
     # Loss and metrics over the test set:
     logging.info('')
     logging.info('Evaluating on test set...')
@@ -383,7 +403,7 @@ def evaluate_model(sess, opts, data_train, data_val, data_test):
 
 ###########################################################################################################
 ### Take a training step
-def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
+def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id, ldisc_weights_train):
     if opts.net_arch == 'orig':
         # Get variables from graph:
         x_f                  = graph.get_tensor_by_name('x_f:0')
@@ -392,10 +412,7 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
         L_comb               = graph.get_tensor_by_name('L_comb:0')
         y_true_cont          = graph.get_tensor_by_name('y_true_cont:0')
         y_true_disc          = graph.get_tensor_by_name('y_true_disc:0')
-        w_cont               = graph.get_tensor_by_name('w_cont:0')
-        w_disc               = graph.get_tensor_by_name('w_disc:0')
-        loss_cont_margin     = graph.get_tensor_by_name('loss_cont_margin:0')
-        loss_cont_saturation = graph.get_tensor_by_name('loss_cont_saturation:0')
+        ldisc_weights        = graph.get_tensor_by_name('ldisc_weights:0')
         train_step           = graph.get_operation_by_name('apply_grads_adam')
         
         # Unroll predictions and labels:
@@ -412,10 +429,7 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
                 keep_prob: opts.keep_prob_train,
                 y_true_cont: true_labels_cont,
                 y_true_disc: true_labels_disc,
-                w_cont: 1,
-                w_disc: 1./6.,
-                loss_cont_margin: 0,
-                loss_cont_saturation: 1500})
+                ldisc_weights: ldisc_weights_train})
         
         # Look for NaNs on variables and gradients:
         if opts.debug and batch_id % opts.nsteps_debug == 0:
@@ -428,7 +442,32 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
                     tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
         
     elif opts.net_arch == 'onlyfull':
-        pass
+        # Get variables from graph:
+        keep_prob            = graph.get_tensor_by_name('keep_prob:0')
+        L_disc               = graph.get_tensor_by_name('L_disc:0')
+        y_true               = graph.get_tensor_by_name('y_true:0')
+        x_f = graph.get_tensor_by_name('x_f:0')
+        
+        # Unroll predictions and labels:
+        im_prep_batch = inputs['im_prep_batch']
+        true_labels = labels['true_labels']
+        
+        # Take training step:
+        _, grads_and_vars, curr_loss = \
+            sess.run([train_step, gradients, L_disc], feed_dict={
+                x_f: im_prep_batch,
+                keep_prob: opts.keep_prob_train,
+                y_true: true_labels})
+        
+        # Look for NaNs on variables and gradients:
+        if opts.debug and batch_id % opts.nsteps_debug == 0:
+            count = -1
+            for gv in grads_and_vars:
+                count = count + 1
+                if np.any(np.isnan(gv[0])):
+                    tools.error('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
+                if np.any(np.isnan(gv[1])):
+                    tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
         
     elif opts.net_arch == 'onlybody':
         pass
@@ -437,4 +476,44 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id):
         tools.error('Network architecture not recognized.')
     
     return curr_loss
+
+
+###########################################################################################################
+### Compute the weights for the discrete loss
+def get_discrete_weights_no_reweight(data_loader, opts):
+    if opts.reweight == 'allones':
+        discrete_weights = np.ones(NDIM_DISC)
+        
+    elif opts.reweight == 'ondataset':
+        y_disc_true_concat = np.zeros((data_loader.nimages, NDIM_DISC), dtype=np.float32)
+        # Loop over the whole dataset:
+        for batch_id in range(data_loader.n_batches_per_epoch):
+            # Load batch:
+            _, labels = data_loader.load_batch_with_labels(opts)
+            # Concatenate:
+            lim_up = np.min([(batch_id+1)*opts.batch_size, data_loader.nimages])
+            lim_batch = opts.batch_size - np.max(((batch_id+1)*opts.batch_size - data_loader.nimages), 0)
+            y_disc_true_concat[batch_id*opts.batch_size:lim_up, :] = labels['true_labels_disc'][0:lim_batch, :]
+        # Compute weights:
+        discrete_weights = get_discrete_weights_from_data(y_disc_true_concat, opts.ldisc_c)
+        logging.info('Discrete weights set to:')
+        logging.info(str(discrete_weights))
+        
+    else:
+        tools.error('Incorrect value for reweight option.')
+    return discrete_weights
+
+
+###########################################################################################################
+### Compute the weights for the discrete loss
+def get_discrete_weights_from_data(y_true_disc, ldisc_c):
+    sum_classes = np.sum(y_true_disc, axis=0)
+    mask = sum_classes > 0.5
+    weights_prev = np.ones((NDIM_DISC)) / np.log(sum_classes + ldisc_c)
+    discrete_weights = mask * weights_prev
+    return discrete_weights
+
+
+
+
 

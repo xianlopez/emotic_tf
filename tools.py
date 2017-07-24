@@ -8,7 +8,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import collections
-from params import emotic_mean, emotic_std, category_names
+from params import emotic_mean, emotic_std, places_mean, places_std, imagenet_mean, imagenet_std, category_names
 import os
 import time
 import logging
@@ -28,6 +28,7 @@ def load_annotations(dataset, opts):
     elif(dataset != 'all'):
         error('dataset not recognized.')
     
+    # Load full file with all the annotations:
     with open(opts.dirbase + 'annotations_txt.txt', "r") as f:
         annotations = list()
         for line in f:
@@ -49,6 +50,7 @@ def load_annotations(dataset, opts):
             cur_annotation.extend(categories)
             annotations.append(cur_annotation)
     
+    # Keep only those corresonding to the set we are interested in:
     if dataset != 'all':
         with open(subset_name, "r") as f:
             all_lines = f.readlines()
@@ -56,12 +58,22 @@ def load_annotations(dataset, opts):
             selected_indexes = np.zeros(nlines, dtype=np.int32)
             for idx in range(nlines):
                 selected_indexes[idx] = np.int32(all_lines[idx][0:len(all_lines[idx])-1]) - 1
-            
         # If we are not selecting the whole dataset, we keep only the corresponding annotations.
         aux = annotations
         annotations = list()
         for idx in range(nlines):
-            annotations.append(aux[selected_indexes[idx]])            
+            annotations.append(aux[selected_indexes[idx]])
+    
+    # If mini_dataset options is on, keep only a portion of the annotations:
+    if opts.mini_dataset:
+        aux = annotations
+        nprev = len(annotations)
+        nmini = int(np.round(np.float32(nprev) * opts.mini_percent / 100.0))
+        selected_indexes = np.random.choice(range(nprev), nmini, replace=False)
+        annotations = list()
+        for idx in range(nmini):
+            annotations.append(aux[selected_indexes[idx]])
+        logging.info('Number of annotations reduced from %i to %i.' % (nprev, nmini))
             
     return annotations
 
@@ -128,6 +140,15 @@ def load_images_onepath(filepath, opts):
     image = Image.open(filepath)
     # Convert to numpy arrays:
     im_prep = preprocess_onepath(image, opts)
+    # Select mean and standard deviation according to the dataset:
+    if opts.net_arch == 'fullpath':
+        data_mean = places_mean
+        data_std = places_std
+    elif opts.net_arch == 'bodypath':
+        data_mean = imagenet_mean
+        data_std = imagenet_std
+    else:
+        error('net_arch option nor recognized.')
     # Normalize:
     if opts.normalize == 0:
         # No normalization
@@ -135,12 +156,12 @@ def load_images_onepath(filepath, opts):
     elif opts.normalize == 1:
         # Full normalization
         for idx_channel in range(3):
-            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - emotic_mean[idx_channel]
-            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] / emotic_std[idx_channel]
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - data_mean[idx_channel]
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] / data_std[idx_channel]
     elif opts.normalize == 2:
         # Normalization only with mean
         for idx_channel in range(3):
-            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - emotic_mean[idx_channel]
+            im_prep[:,:,idx_channel] = im_prep[:,:,idx_channel] - data_mean[idx_channel]
     else:
         error('normalize option not understood.')
     return im_prep
@@ -343,6 +364,11 @@ def postprocess_options(opts):
     # It is not  possible to load the weights from Torch, and at the same time restore a saved model:
     if opts.restore_model and opts.load_torch:
         error('Not possible to restore a saved model and at the same time load the weights from Torch.')
+    # If the network architecture is set to one path, ensure it has its corresponding loss:
+    if opts.net_arch == 'fullpath' and opts.loss_type != 'fullpath':
+        error('fullpath network architecture must have fullpath loss_type')
+    if opts.net_arch == 'bodypath' and opts.loss_type != 'bodypath':
+        error('bodypath network architecture must have bodypath loss_type')
 
 
 ###########################################################################################################
@@ -405,10 +431,19 @@ def preprocess_emotic(image, body_bbox, opts):
 
 ###########################################################################################################
 ### Preprocess image.
-def preprocess_onepath(image, body_bbox, opts):
-    pass
-
-
+def preprocess_onepath(image, opts):
+    # Decide image size:
+    if opts.net_arch == 'fullpath':
+        im_size = 224
+    elif opts.net_arch == 'bodypath':
+        im_size = 128
+    else:
+        error('net_arch option nor recognized.')
+    # Resize:
+    image_prep = image.resize((im_size, im_size), resample=Image.BILINEAR)
+    # Rescale to the range 0-1, and convert to floating point:
+    image_prep = np.float32(image_prep) / 255
+    return image_prep
 
 
 
