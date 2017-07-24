@@ -18,6 +18,62 @@ import sys
 ###########################################################################################################
 ### Load annotations
 def load_annotations(dataset, opts):
+    if opts.net_arch == 'orig':
+        annotations = load_annotations_orig(dataset, opts)
+    elif opts.net_arch == 'bodypath':
+        annotations = load_annotations_imagenet(dataset, opts)
+    else:
+        error('net_arch option not recognized.')
+    return annotations
+
+
+###########################################################################################################
+### Load annotations for ImageNet
+def load_annotations_imagenet(dataset, opts):
+    
+    if(dataset == 'train'):
+        ann_file = opts.imagenet_dir + '/train_annotations.txt'
+        with open(ann_file) as f:
+            annotations = list()
+            for line in f:
+                line_split = line.split(' ')
+                imagepath = 'train/' + line_split[0]
+                imageclass = line_split[1]
+                imageclass = imageclass[0:len(imageclass)-1]
+                annotations.append([imagepath, imageclass])
+                
+    elif(dataset == 'val'):
+        ann_file = opts.imagenet_dir + '/ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt'
+        with open(ann_file) as f:
+            annotations = list()
+            count = 0
+            for line in f:
+                count = count + 1
+                imageclass = line[0:len(line)-1]
+                num8digits = '%08d' % count
+                imagepath = 'val/ILSVRC2012_val_' + num8digits + '.JPEG'
+                annotations.append([imagepath, imageclass])
+            
+    else:
+        error('dataset not recognized (test and all are not available for ImageNet).')
+    
+    # If mini_dataset options is on, keep only a portion of the annotations:
+    if opts.mini_dataset:
+        aux = annotations
+        nprev = len(annotations)
+        nmini = int(np.round(np.float32(nprev) * opts.mini_percent / 100.0))
+        selected_indexes = np.random.choice(range(nprev), nmini, replace=False)
+        annotations = list()
+        for idx in range(nmini):
+            annotations.append(aux[selected_indexes[idx]])
+        logging.info('Number of annotations reduced from %i to %i.' % (nprev, nmini))
+            
+    return annotations
+
+
+###########################################################################################################
+### Load annotations
+def load_annotations_orig(dataset, opts):
     
     if(dataset == 'train'):
         subset_name = opts.dirbase + 'train_annotations.txt'

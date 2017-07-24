@@ -279,7 +279,7 @@ class data_loader_imagenet:
             # Add one dimension (for batch)
             im_prep_batch[idx_in_batch, :, :, :] = im_full
 
-            # Build the batch with the true labels:            
+            # Build the batch with the true labels:
             # Discrete:
             for cat_idx in range(NCAT_IMAGENET):
                 if tools.category_in_annotation(self.annotations[self.indexes[im_idx]], cat_idx):

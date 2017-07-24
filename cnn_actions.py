@@ -21,6 +21,7 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
     modelname = dircase + '/model'
         
     # Get discrete weights, when they are computed with the whole dataset, or just ones:
+    ldisc_weights_train = []
     if opts.reweight != 'onbatch':
         ldisc_weights_train = get_discrete_weights_no_reweight(data_train, opts)
     

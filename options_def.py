@@ -75,7 +75,7 @@ class general_options_class:
         # Directories of databases:
         self.emotic_dir_jpg = '/home/xian/EMOTIC/EmpathyDB_images'
         self.emotic_dir_png = '/home/xian/EMOTIC/images_preprocessed'
-        self.imagenet_dir = ''
+        self.imagenet_dir = '/media/xian/TOSHIBA EXT/ImageNet'
         self.places_dir = ''
         
         self.load_from_png = False # Only with EMOTIC dataset. Load images from png format, which have already been preprocessed.

@@ -24,7 +24,7 @@ opts.nsteps_valloss = 200
 opts.nsteps_save = 2000
 opts.initial_learning_rate = 1e-6
 
-opts.net_arch = 'orig'
+opts.net_arch = 'bodypath'
 
 opts.train = 0
 opts.evaluate_model = 1
@@ -35,11 +35,11 @@ opts.save_initial = 0
 opts.debug = 1
 opts.nsteps_debug = 50
 
-opts.loss_type = 'orig'
+opts.loss_type = 'bodypath'
 opts.optimizer = 'momentum'
 
 opts.xavier_init = 1
-opts.load_from_png = 1
+opts.load_from_png = 0
 
 opts.restore_model = 0
 opts.checkpoint = 'last'
