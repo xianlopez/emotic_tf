@@ -22,7 +22,8 @@ class general_options_class:
         # Specific CNN options:
         self.modelname = 'cnn_emotic_1'
         self.cnn_opts = {
-            'cnn_emotic_1': opts_cnn_emotic_1_class()
+            'cnn_emotic_1': opts_cnn_emotic_1_class(),
+            'cnn_emotic_2': opts_cnn_emotic_1_class()
         }
     
         # Training options:

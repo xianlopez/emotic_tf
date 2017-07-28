@@ -32,19 +32,19 @@ def bias_variable(shape, name):
 ###########################################################################################################
 ### Convolution with bias, and custom stride and pad.
 def conv2d(x, W, b, strideH=1, strideW=1, padH=0, padW=0, name=None):
-    paddings = tf.constant([[0, 0], [padW, padW], [padH, padH], [0, 0]])
-    return tf.add(tf.nn.conv2d(tf.pad(x, paddings), W, strides = [1, strideW, strideH, 1], padding = "VALID"), b, name=name)
+    paddings = tf.constant([[0, 0], [padH, padH], [padW, padW], [0, 0]])
+    return tf.add(tf.nn.conv2d(tf.pad(x, paddings), W, strides = [1, strideH, strideW, 1], padding = "VALID"), b, name=name)
 
 
 ###########################################################################################################
 ### Add one block of the form conv + relu + conv + bn + relu
-def add_block(x_in, var_dict, strideW, strideH, padW, padH, path_id, block_id):
+def add_block(x_in, var_dict, strideH, strideW, padH, padW, path_id, block_id):
     # Base name, including path id and block id:
     basename = 'p' + str(path_id) + '_b' + str(block_id) + '_'
     # Block operations:
-    conv1 = conv2d(x_in, var_dict.items()[0][1], var_dict.items()[1][1], strideW, strideH, padW, padH, name=basename+'conv1')
+    conv1 = conv2d(x_in, var_dict.items()[0][1], var_dict.items()[1][1], strideH, strideW, padH, padW, name=basename+'conv1')
     relu1 = tf.nn.relu(conv1, name=basename+'relu1')
-    conv2 = conv2d(relu1, var_dict.items()[2][1], var_dict.items()[3][1], strideH, strideW, padH, padW, name=basename+'conv2')
+    conv2 = conv2d(relu1, var_dict.items()[2][1], var_dict.items()[3][1], strideW, strideH, padW, padH, name=basename+'conv2')
     bn = tf.nn.batch_normalization(conv2, var_dict.items()[4][1], var_dict.items()[5][1], \
         var_dict.items()[6][1], var_dict.items()[7][1], BN_EPS, name=basename+'bn')
     relu2 = tf.nn.relu(bn, name=basename+'relu2')
@@ -53,13 +53,13 @@ def add_block(x_in, var_dict, strideW, strideH, padW, padH, path_id, block_id):
 
 ###########################################################################################################
 ### Add one block of the form conv + relu + conv + relu + bn
-def add_block_v2(x_in, var_dict, strideW, strideH, padW, padH, path_id, block_id):
+def add_block_v2(x_in, var_dict, strideH, strideW, padH, padW, path_id, block_id):
     # Base name, including path id and block id:
     basename = 'p' + str(path_id) + '_b' + str(block_id) + '_'
     # Block operations:
-    conv1 = conv2d(x_in, var_dict.items()[0][1], var_dict.items()[1][1], strideW, strideH, padW, padH, name=basename+'conv1')
+    conv1 = conv2d(x_in, var_dict.items()[0][1], var_dict.items()[1][1], strideH, strideW, padH, padW, name=basename+'conv1')
     relu1 = tf.nn.relu(conv1, name=basename+'relu1')
-    conv2 = conv2d(relu1, var_dict.items()[2][1], var_dict.items()[3][1], strideH, strideW, padH, padW, name=basename+'conv2')
+    conv2 = conv2d(relu1, var_dict.items()[2][1], var_dict.items()[3][1], strideW, strideH, padW, padH, name=basename+'conv2')
     relu2 = tf.nn.relu(conv2, name=basename+'relu2')
     bn = tf.nn.batch_normalization(relu2, var_dict.items()[4][1], var_dict.items()[5][1], \
         var_dict.items()[6][1], var_dict.items()[7][1], BN_EPS, name=basename+'bn')
@@ -293,21 +293,21 @@ class cnn_builder_class:
         # Initialize dictionary:
         var_dict = collections.OrderedDict()
         # block 1
-        self.random_variables_block(3, 32, 64, 1, 11, var_dict, 1, 1)
+        self.random_variables_block(3, 32, 64, 11, 1, var_dict, 1, 1)
         # block 2
-        self.random_variables_block(64, 128, 256, 1, 5, var_dict, 1, 2)
+        self.random_variables_block(64, 128, 256, 5, 1, var_dict, 1, 2)
         # block 3
-        self.random_variables_block(256, 384, 512, 1, 3, var_dict, 1, 3)
+        self.random_variables_block(256, 384, 512, 3, 1, var_dict, 1, 3)
         # block 4
-        self.random_variables_block(512, 384, 384, 1, 3, var_dict, 1, 4)
+        self.random_variables_block(512, 384, 384, 3, 1, var_dict, 1, 4)
         # block 5
-        self.random_variables_block(384, 640, 640, 1, 3, var_dict, 1, 5)
+        self.random_variables_block(384, 640, 640, 3, 1, var_dict, 1, 5)
         # block 6
-        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 6)
+        self.random_variables_block(640, 640, 640, 3, 1, var_dict, 1, 6)
         # block 7
-        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 7)
+        self.random_variables_block(640, 640, 640, 3, 1, var_dict, 1, 7)
         # block 8
-        self.random_variables_block(640, 640, 640, 1, 3, var_dict, 1, 8)
+        self.random_variables_block(640, 640, 640, 3, 1, var_dict, 1, 8)
         return var_dict
 
 
@@ -343,11 +343,11 @@ class cnn_builder_class:
         # Initialize dictionary:
         var_dict = collections.OrderedDict()
         # block 1
-        self.random_variables_block(3, 32, 64, 1, 3, var_dict, 2, 1)
+        self.random_variables_block(3, 32, 64, 3, 1, var_dict, 2, 1)
         # block 2
-        self.random_variables_block(64, 128, 128, 1, 3, var_dict, 2, 2)
+        self.random_variables_block(64, 128, 128, 3, 1, var_dict, 2, 2)
         # block 3
-        self.random_variables_block(128, 128, 128, 1, 3, var_dict, 2, 3)
+        self.random_variables_block(128, 128, 128, 3, 1, var_dict, 2, 3)
         return var_dict
 
 
@@ -395,11 +395,11 @@ class cnn_builder_class:
         x = x_f
         for block_idx in range(8):
             var_dict_block = tools.get_subdictionary(ini, 8, var_dict)
-            strideW = block_configurations[block_idx][0]
-            strideH = block_configurations[block_idx][1]
-            padW = block_configurations[block_idx][2]
-            padH = block_configurations[block_idx][3]
-            x = add_block(x, var_dict_block, strideW, strideH, padW, padH, 1, block_idx+1)
+            strideH = block_configurations[block_idx][0]
+            strideW = block_configurations[block_idx][1]
+            padH = block_configurations[block_idx][2]
+            padW = block_configurations[block_idx][3]
+            x = add_block(x, var_dict_block, strideH, strideW, padH, padW, 1, block_idx+1)
             ini = ini + 8
         # average pooling
         p1_avgpool = tf.layers.average_pooling2d(x, pool_size = 4, strides = 1, padding = "VALID", name='p1_avgpool')
@@ -436,14 +436,14 @@ class cnn_builder_class:
         x = x_b
         for block_idx in range(3):
             var_dict_block = tools.get_subdictionary(ini, 8, var_dict)
-            strideW = block_configurations[block_idx][0]
-            strideH = block_configurations[block_idx][1]
-            padW = block_configurations[block_idx][2]
-            padH = block_configurations[block_idx][3]
+            strideH = block_configurations[block_idx][0]
+            strideW = block_configurations[block_idx][1]
+            padH = block_configurations[block_idx][2]
+            padW = block_configurations[block_idx][3]
             if (not self.correct_block2) and block_idx == 1:
-                x = add_block_v2(x, var_dict_block, strideW, strideH, padW, padH, 2, block_idx+1)
+                x = add_block_v2(x, var_dict_block, strideH, strideW, padH, padW, 2, block_idx+1)
             else:
-                x = add_block(x, var_dict_block, strideW, strideH, padW, padH, 2, block_idx+1)
+                x = add_block(x, var_dict_block, strideH, strideW, padH, padW, 2, block_idx+1)
             ini = ini + 8
         # average pooling
         if self.correct_avgpool:
@@ -567,7 +567,7 @@ class cnn_builder_class:
             pred_dense2_weight = weight_variable_xavier([256, NCAT_IMAGENET], 256, NCAT_IMAGENET, name='pred_dense2_weight')
             pred_dense2_bias = bias_variable([NCAT_IMAGENET], name='pred_dense2_bias')
         else:
-            pred_dense1_weight = weight_variable([640, 256], name='pred_dense1_weight')
+            pred_dense1_weight = weight_variable([128, 256], name='pred_dense1_weight')
             pred_dense1_bias = bias_variable([256], name='pred_dense1_bias')
             pred_dense2_weight = weight_variable([256, NCAT_IMAGENET], name='pred_dense2_weight')
             pred_dense2_bias = bias_variable([NCAT_IMAGENET], name='pred_dense2_bias')
@@ -613,13 +613,12 @@ class cnn_builder_class:
         graph = tf.get_default_graph()
         cnn_dict = {
             'y'        : y,
-            'x_f'        : graph.get_tensor_by_name('x_f:0'),
-            'keep_prob': graph.get_tensor_by_name('keep_prob:0')
+            'x_f'        : graph.get_tensor_by_name('x_f:0')
         }
         return cnn_dict
 
 
-    ########################################################################################    ########################################################################################
+    ########################################################################################
     #### Define network only with the body image path:
     def define_bodypath(self):
         # Body image path:
@@ -630,8 +629,7 @@ class cnn_builder_class:
         graph = tf.get_default_graph()
         cnn_dict = {
             'y'        : y,
-            'x_b'        : graph.get_tensor_by_name('x_b:0'),
-            'keep_prob': graph.get_tensor_by_name('keep_prob:0')
+            'x_b'      : graph.get_tensor_by_name('x_b:0')
         }
         return cnn_dict
 
@@ -758,27 +756,28 @@ class cnn_builder_class:
         L_disc = tf.divide(sigmoid_cross_entropy, tf.cast((self.batch_size * NCAT_PLACES), dtype=tf.float32), name='L_disc')
         # Return a dictionary with the loss output and all its parameters and inputs:
         loss_dict = {
-            'L_disc'              : L_disc,
-            'y_true'         : y_true,
+            'L_disc': L_disc,
+            'y_true': y_true,
         }
         return loss_dict
 
 
     ########################################################################################
     #### Define loss when the network hast only the body image path:
-    def define_loss_bodypath(self):
+    def define_loss_bodypath(self, opts):
         # Get graph:
         graph = tf.get_default_graph()
         # Inputs:
         y_pred = graph.get_tensor_by_name('y:0')
         y_true = tf.placeholder(tf.float32, shape=(None, NCAT_IMAGENET), name='y_true')
         # Loss computation:
-        sigmoid_cross_entropy = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred))
-        L_disc = tf.divide(sigmoid_cross_entropy, tf.cast((self.batch_size * NCAT_IMAGENET), dtype=tf.float32), name='L_disc')
+#         sigmoid_cross_entropy = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_true, logits=y_pred)) # esta loss require labels -1 e 1
+        softmax_cross_entropy = tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))
+        L_disc = tf.divide(softmax_cross_entropy, tf.cast((self.batch_size * NCAT_IMAGENET), dtype=tf.float32), name='L_disc')
         # Return a dictionary with the loss output and all its parameters and inputs:
         loss_dict = {
-            'L_disc'              : L_disc,
-            'y_true'         : y_true,
+            'L_disc': L_disc,
+            'y_true': y_true,
         }
         return loss_dict
 
@@ -802,8 +801,12 @@ class cnn_builder_class:
             tools.error('Optimizer not recognized.')
         
         # Operation to compute the gradients:
-        L_comb = graph.get_tensor_by_name('L_comb:0')
-        gradients = optimizer.compute_gradients(L_comb)
+        if opts.net_arch == 'orig':
+            L_comb = graph.get_tensor_by_name('L_comb:0')
+            gradients = optimizer.compute_gradients(L_comb)
+        else:
+            L_disc = graph.get_tensor_by_name('L_disc:0')
+            gradients = optimizer.compute_gradients(L_disc)
         
         # Operation to apply the gradietns:
         optimizer.apply_gradients(gradients, name='apply_grads_adam')

@@ -263,7 +263,7 @@ class data_loader_imagenet:
     def load_batch_with_labels(self, opts):
         # Initialize arrays:
         im_prep_batch = np.zeros([opts.batch_size, 128, 128, 3], dtype=np.float32)
-        true_labels = np.zeros((opts.batch_size, NDIM_DISC), dtype=np.float32)
+        true_labels = np.zeros((opts.batch_size, NCAT_IMAGENET), dtype=np.float32)
         
         # Fill the batches:
         for idx_in_batch in range(opts.batch_size):
@@ -274,7 +274,7 @@ class data_loader_imagenet:
                 tools.error('Image index over number of images per epoch')
             
             # Load images (full and body):
-            im_full = tools.load_images_onepath(self.annotations[self.indexes[im_idx]], opts)
+            im_full = tools.load_images_onepath(self.annotations[self.indexes[im_idx]][0], opts)
 
             # Add one dimension (for batch)
             im_prep_batch[idx_in_batch, :, :, :] = im_full
@@ -282,8 +282,7 @@ class data_loader_imagenet:
             # Build the batch with the true labels:
             # Discrete:
             for cat_idx in range(NCAT_IMAGENET):
-                if tools.category_in_annotation(self.annotations[self.indexes[im_idx]], cat_idx):
-                    true_labels[idx_in_batch, cat_idx] = 1
+                true_labels[idx_in_batch, cat_idx] = self.annotations[self.indexes[im_idx]][1]
         
         # Update batch index:
         self.curr_batch = self.curr_batch + 1

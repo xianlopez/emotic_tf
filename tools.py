@@ -23,7 +23,7 @@ def load_annotations(dataset, opts):
     elif opts.net_arch == 'bodypath':
         annotations = load_annotations_imagenet(dataset, opts)
     else:
-        error('net_arch option not recognized.')
+        error('<load_annotations> net_arch option not recognized.')
     return annotations
 
 
@@ -37,7 +37,7 @@ def load_annotations_imagenet(dataset, opts):
             annotations = list()
             for line in f:
                 line_split = line.split(' ')
-                imagepath = 'train/' + line_split[0]
+                imagepath = opts.imagenet_dir + '/train/' + line_split[0]
                 imageclass = line_split[1]
                 imageclass = imageclass[0:len(imageclass)-1]
                 annotations.append([imagepath, imageclass])
@@ -51,7 +51,7 @@ def load_annotations_imagenet(dataset, opts):
                 count = count + 1
                 imageclass = line[0:len(line)-1]
                 num8digits = '%08d' % count
-                imagepath = 'val/ILSVRC2012_val_' + num8digits + '.JPEG'
+                imagepath = opts.imagenet_dir + '/val/ILSVRC2012_val_' + num8digits + '.JPEG'
                 annotations.append([imagepath, imageclass])
             
     else:
@@ -193,6 +193,7 @@ def load_images(annotation, opts):
 ### Load image from ImageNet.
 def load_images_onepath(filepath, opts):
     # Load image:
+#     print(filepath)
     image = Image.open(filepath)
     # Convert to numpy arrays:
     im_prep = preprocess_onepath(image, opts)
@@ -204,7 +205,7 @@ def load_images_onepath(filepath, opts):
         data_mean = imagenet_mean
         data_std = imagenet_std
     else:
-        error('net_arch option nor recognized.')
+        error('<load_images_onepath> net_arch option nor recognized.')
     # Normalize:
     if opts.normalize == 0:
         # No normalization
@@ -488,13 +489,21 @@ def preprocess_emotic(image, body_bbox, opts):
 ###########################################################################################################
 ### Preprocess image.
 def preprocess_onepath(image, opts):
+    # Check if it is a black & white image:
+    # (and put the image in "image_full")
+    if image.mode == 'L': # black & white, 8-bit pixels
+        image = image.convert('RGB')
+    elif image.mode == 'RGB': # 3x8-bit pixels, true color
+        pass
+    else:
+        error('<preprocess_onepath> Unrecognized image mode %s' % image.mode)
     # Decide image size:
     if opts.net_arch == 'fullpath':
         im_size = 224
     elif opts.net_arch == 'bodypath':
         im_size = 128
     else:
-        error('net_arch option nor recognized.')
+        error('<preprocess_onepath> net_arch option nor recognized.')
     # Resize:
     image_prep = image.resize((im_size, im_size), resample=Image.BILINEAR)
     # Rescale to the range 0-1, and convert to floating point:

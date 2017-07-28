@@ -54,11 +54,12 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
         val_metrics.append([np.mean(mean_err), mean_ap])
         
     # Main loop:
-    batch_id = 0
     for i in range(opts.nsteps):
-        batch_id = batch_id + 1
+        batch_id = i + 1
         
         if batch_id % opts.nsteps_print_batch_id == 0:
+            print('')
+            print('-----------------')
             logging.info('batch %i / %i' % (i+1, opts.nsteps))
         
         # Load batch:
@@ -70,6 +71,9 @@ def train(sess, saver, opts, dircase, data_train, data_val, gradients):
         # Get discrete weights, if we have to reweight on each batch:
         if opts.reweight == 'onbatch':
             ldisc_weights_train = get_discrete_weights_from_data(labels['true_labels_disc'], opts.ldisc_c)
+           
+        if batch_id > 268:
+            print_everything(sess, graph, opts, inputs, labels, gradients)
         
         # Take a training step:
         curr_loss = take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id, ldisc_weights_train)
@@ -150,7 +154,7 @@ def evaluate_on_dataset(sess, graph, data_loader, opts):
     if opts.net_arch == 'orig':
         loss, ap, mean_error, mean_ap = evaluate_on_dataset_orig(sess, graph, data_loader, opts)
         
-    elif opts.net_arch == 'fullpath' or opts.net_arch == 'bodypath':
+    elif opts.net_arch == 'onlyfull' or opts.net_arch == 'onlybody':
         loss, ap, mean_ap = evaluate_on_dataset_onepath(sess, graph, data_loader, opts)
         mean_error = 0
         
@@ -240,6 +244,7 @@ def evaluate_on_dataset_orig(sess, graph, data_loader, opts):
 def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
     
     y                    = graph.get_tensor_by_name('y:0')
+    keep_prob            = graph.get_tensor_by_name('keep_prob:0')
     L_disc               = graph.get_tensor_by_name('L_disc:0')
     y_true               = graph.get_tensor_by_name('y_true:0')
     if opts.net_arch == 'fullpath':
@@ -250,8 +255,8 @@ def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
         tools.error('net_arch not recognized.')
     
     loss = 0
-    y_pred_concat = np.zeros((data_loader.n_images_per_epoch, 1000), dtype=np.float32)
-    y_true_concat = np.zeros((data_loader.n_images_per_epoch, 1000), dtype=np.float32)
+    y_pred_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
+    y_true_concat = np.zeros((data_loader.n_images_per_epoch, NDIM_DISC), dtype=np.float32)
     
     progress = 0
     progress_step = 10
@@ -266,11 +271,12 @@ def evaluate_on_dataset_onepath(sess, graph, data_loader, opts):
         # Load batch:
         inputs, labels = data_loader.load_batch_with_labels(opts)
         # Unroll inputs and labels:
-        im_batch = inputs['im_prep_batch']
-        true_labels = labels['true_labels']
+        im_batch = inputs[0]
+        true_labels = labels[1]
         # Run network:
         y_pred, curr_loss = sess.run([y, L_disc], feed_dict={
             x: im_batch,
+            keep_prob: 1,
             y_true: true_labels})
         # Accumulate loss:
         loss = loss + curr_loss
@@ -473,9 +479,9 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id, l
         
     elif opts.net_arch == 'bodypath':
         # Get variables from graph:
-        L_disc               = graph.get_tensor_by_name('L_disc:0')
+        loss               = graph.get_tensor_by_name('loss:0')
         y_true               = graph.get_tensor_by_name('y_true:0')
-        x_b                  = graph.get_tensor_by_name('x_b:0')
+        x_in                  = graph.get_tensor_by_name('x_in:0')
         train_step           = graph.get_operation_by_name('apply_grads_adam')
         
         # Unroll predictions and labels:
@@ -484,19 +490,38 @@ def take_training_step(sess, graph, opts, inputs, labels, gradients, batch_id, l
         
         # Take training step:
         _, grads_and_vars, curr_loss = \
-            sess.run([train_step, gradients, L_disc], feed_dict={
-                x_b: im_prep_batch,
+            sess.run([train_step, gradients, loss], feed_dict={
+                x_in: im_prep_batch,
                 y_true: true_labels})
         
+#         # Take training step:
+#         conv1 = graph.get_tensor_by_name('conv1:0')
+#         max3 = graph.get_tensor_by_name('maxpool3:0')
+#         flat = graph.get_tensor_by_name('flattening:0')
+#         logits = graph.get_tensor_by_name('logits:0')
+#         conv1_val, max3_val, flat_val, logits_val = \
+#             sess.run([conv1, max3, flat, logits], feed_dict={
+#                 x_in: im_prep_batch,
+#                 y_true: true_labels})
+#         print(conv1_val.shape)
+#         print(max3_val.shape)
+#         print(flat_val.shape)
+#         print(logits_val.shape)
+
         # Look for NaNs on variables and gradients:
         if opts.debug and batch_id % opts.nsteps_debug == 0:
+            found_nan = False
             count = -1
             for gv in grads_and_vars:
                 count = count + 1
                 if np.any(np.isnan(gv[0])):
-                    tools.error('Found nan in gradient of ' + str(tf.trainable_variables()[count]))
+                    found_nan = True
+                    logging.warning('Found NaN in gradient of ' + str(tf.trainable_variables()[count]))
                 if np.any(np.isnan(gv[1])):
-                    tools.error('Found nan in variable ' + str(tf.trainable_variables()[count]))
+                    found_nan = True
+                    logging.warning('Found NaN in variable ' + str(tf.trainable_variables()[count]))
+            if found_nan:
+                tools.error('Found NaNs.')
         
     else:
         tools.error('Network architecture not recognized.')
@@ -539,6 +564,46 @@ def get_discrete_weights_from_data(y_true_disc, ldisc_c):
     discrete_weights = mask * weights_prev
     return discrete_weights
 
+
+###########################################################################################################
+### *****
+def print_everything(sess, graph, opts, inputs, labels, gradients):
+    # Get variables from graph:
+    loss       = graph.get_tensor_by_name('loss:0')
+    y_true     = graph.get_tensor_by_name('y_true:0')
+    x_in       = graph.get_tensor_by_name('x_in:0')
+    
+    # Unroll predictions and labels:
+    im_prep_batch = inputs['im_prep_batch']
+    true_labels = labels['true_labels']
+    
+    # ****
+    grads_and_vars = \
+        sess.run(gradients, feed_dict={
+            x_in: im_prep_batch,
+            y_true: true_labels})
+
+    # ****
+    print('-------------')
+    count = -1
+    for gv in grads_and_vars:
+        count = count + 1
+        nome = tf.trainable_variables()[count].name
+        if nome == 'dense1_weight:0' or nome == 'dense2_weight:0':
+            print('')
+            print('Variable ' + nome)
+            print('gv[1] class: ' + gv[1].__class__.__name__)
+            print('gv[1] shape: ' + str(gv[1].shape))
+            print(gv[1][0].shape)
+            print(gv[1][0][0:20])
+            print('gv[1][0:3][0]: ')
+            print(gv[1][0][0], gv[1][1][0], gv[1][2][0])
+        if nome == 'dense1_bias:0' or nome == 'dense2_bias:0':
+            print('')
+            print('Variable ' + nome)
+            print('gv[1] class: ' + gv[1].__class__.__name__)
+            print('gv[1] shape: ' + str(gv[1].shape))
+            print(gv[1][0:20])
 
 
 

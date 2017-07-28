@@ -5,6 +5,7 @@
 import tools
 
 import cnn_emotic_1
+import cnn_emotic_2
 
 
 
@@ -13,9 +14,12 @@ def build_model(opts):
     
     if opts.modelname == 'cnn_emotic_1':
         cnn_builder = cnn_emotic_1.cnn_builder_class(opts.cnn_opts[opts.modelname], opts)
+    
+    elif opts.modelname == 'cnn_emotic_2':
+        cnn_builder = cnn_emotic_2.cnn_builder_class()
         
     else:
-        tools.error('modelname not recognized.')
+        tools.error('<model_builder> modelname not recognized.')
 
     # Define network:
     if opts.net_arch == 'orig':
@@ -25,7 +29,7 @@ def build_model(opts):
     elif opts.net_arch == 'bodypath':
         cnn_builder.define_bodypath()
     else:
-        tools.error('Network architecture not recognized.')
+        tools.error('<model_builder> Network architecture not recognized.')
     
     # Define loss:
     if opts.loss_type == 'orig' or opts.loss_type == 'onlycont' or opts.loss_type == 'onlydisc':
@@ -35,9 +39,9 @@ def build_model(opts):
     elif opts.loss_type == 'fullpath':
         cnn_builder.define_loss_fullpath()
     elif opts.loss_type == 'bodypath':
-        cnn_builder.define_loss_bodypath()
+        cnn_builder.define_loss_bodypath(opts)
     else:
-        tools.error('Loss type not recognized.')
+        tools.error('<model_builder> Loss type not recognized.')
     
     # Define optimizer:
     gradients = cnn_builder.define_optimizer(opts)
